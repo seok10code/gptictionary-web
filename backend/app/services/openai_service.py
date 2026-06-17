@@ -9,7 +9,9 @@ from backend.app.services.wiktionary_mcp_service import lookup_wiktionary
 load_dotenv()
 
 client = OpenAI(
-    api_key=os.getenv("OPENAI_API_KEY")
+    api_key=os.getenv("OPENAI_API_KEY"),
+    timeout=20.0,
+    max_retries=1
 )
 
 
