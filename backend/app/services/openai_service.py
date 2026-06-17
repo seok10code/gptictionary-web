@@ -16,10 +16,34 @@ client = OpenAI(
 
 
 async def generate_word_info(vocabulary: str) -> dict:
-    wiktionary_data = await lookup_wiktionary(vocabulary)
+    original_vocabulary = vocabulary.strip().lower()
+    corrected_from = ""
+    correction_korean_meaning = ""
+
+    wiktionary_data = await lookup_wiktionary(original_vocabulary)
 
     if not wiktionary_data.get("found"):
-        return {"valid": False}
+        correction = correct_word_candidate(original_vocabulary)
+
+        if not correction.get("found"):
+            return {"valid": False}
+
+        corrected_word = correction.get("correct_word", "").strip().lower()
+        correction_korean_meaning = correction.get("korean_meaning", "")
+
+        if not corrected_word:
+            return {"valid": False}
+
+        wiktionary_data = await lookup_wiktionary(corrected_word)
+
+        if not wiktionary_data.get("found"):
+            return {"valid": False}
+
+        vocabulary = corrected_word
+        corrected_from = original_vocabulary
+
+    else:
+        vocabulary = original_vocabulary
 
     wiktionary_context = json.dumps(
         wiktionary_data,
@@ -106,6 +130,11 @@ Wiktionary data:
         return {"valid": False}
 
     result["raw_wiktionary"] = wiktionary_data
+    result["vocabulary"] = vocabulary
+    result["corrected_from"] = corrected_from
+
+    if correction_korean_meaning and not result.get("definition"):
+        result["definition"] = correction_korean_meaning
 
     return result
 
@@ -191,3 +220,60 @@ Answer: {answer}
         return None
 
     return result
+
+
+def correct_word_candidate(vocabulary: str) -> dict:
+    prompt = f"""
+You are an English spelling correction assistant.
+
+Return ONLY valid JSON.
+
+Input: {vocabulary}
+
+If the input is a misspelled English word:
+
+{{
+  "found": true,
+  "correct_word": "correct word",
+  "korean_meaning": "짧은 한국어 뜻"
+}}
+
+If the input is already valid:
+
+{{
+  "found": true,
+  "correct_word": "{vocabulary}",
+  "korean_meaning": "짧은 한국어 뜻"
+}}
+
+If you cannot determine a word:
+
+{{
+  "found": false,
+  "correct_word": "",
+  "korean_meaning": ""
+}}
+"""
+
+    try:
+        response = client.chat.completions.create(
+            model="gpt-4o-mini",
+            response_format={"type": "json_object"},
+            messages=[
+                {"role": "system", "content": "Return JSON only."},
+                {"role": "user", "content": prompt},
+            ],
+            temperature=0.1,
+        )
+
+        return json.loads(
+            response.choices[0].message.content
+        )
+
+    except Exception as e:
+        print("SPELL CORRECTION ERROR:", repr(e))
+        return {
+            "found": False,
+            "correct_word": "",
+            "korean_meaning": "",
+        }
