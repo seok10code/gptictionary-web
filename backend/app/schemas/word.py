@@ -1,13 +1,21 @@
-from datetime import datetime
+from typing import Optional
 from pydantic import BaseModel
+from datetime import datetime
 
 
 class WordBase(BaseModel):
     vocabulary: str
     definition: str
-    sentence: str | None = None
-    synonyms: str | None = None
-    usage_note: str | None = None
+    sentence: Optional[str] = None
+    synonyms: Optional[str] = None
+    usage_note: Optional[str] = None
+
+    entries_json: Optional[str] = None
+    pronunciation: Optional[str] = None
+    antonyms: Optional[str] = None
+    examples_json: Optional[str] = None
+    etymology_summary: Optional[str] = None
+    raw_wiktionary_json: Optional[str] = None
 
 
 class WordCreate(WordBase):
@@ -15,20 +23,33 @@ class WordCreate(WordBase):
 
 
 class WordUpdate(BaseModel):
-    vocabulary: str | None = None
-    definition: str | None = None
-    sentence: str | None = None
-    synonyms: str | None = None
-    usage_note: str | None = None
+    vocabulary: Optional[str] = None
+    definition: Optional[str] = None
+    sentence: Optional[str] = None
+    synonyms: Optional[str] = None
+    usage_note: Optional[str] = None
+
+    priority: Optional[int] = None
+    memorize_count: Optional[int] = None
+    total_correct: Optional[int] = None
+    total_wrong: Optional[int] = None
+
+    entries_json: Optional[str] = None
+    pronunciation: Optional[str] = None
+    antonyms: Optional[str] = None
+    examples_json: Optional[str] = None
+    etymology_summary: Optional[str] = None
+    raw_wiktionary_json: Optional[str] = None
 
 
 class WordRead(WordBase):
     id: int
     priority: int
     memorize_count: int
-    created_at: datetime
-    updated_at: datetime
+    total_correct: int
+    total_wrong: int
+    created_at: Optional[datetime] = None
+    updated_at: Optional[datetime] = None
 
-    model_config = {
-        "from_attributes": True
-    }
+    class Config:
+        from_attributes = True

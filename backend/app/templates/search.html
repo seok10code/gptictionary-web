@@ -5,62 +5,182 @@
 <h1 class="page-title">🔍 단어 검색</h1>
 
 <p class="page-desc">
-    DB에 있으면 저장된 데이터를 보여주고, 없으면 AI가 생성해서 저장합니다.
+    DB에 있으면 저장된 데이터를 보여주고, 없으면 MCP + AI로 생성합니다.
 </p>
 
-<div class="card">
-    <form method="post" action="/search">
-        <div class="form-row">
-            <input
-                class="input"
-                type="text"
-                name="query"
-                value="{{ query }}"
-                placeholder="검색할 영어 단어 또는 표현을 입력하세요"
-                required
-            >
+<div class="card search-box-card">
 
-            <button class="btn" type="submit">검색</button>
-        </div>
+    <form method="post" action="/search" class="search-form">
+
+        <input
+            class="input"
+            type="text"
+            name="query"
+            value="{{ query }}"
+            placeholder="검색할 단어"
+            required
+        >
+
+        <button class="btn" type="submit">
+            검색
+        </button>
+
     </form>
+
 </div>
 
 {% if error %}
-<div class="card result-card">
+<div class="card error-card">
+    <h3>오류</h3>
     <p>{{ error }}</p>
 </div>
 {% endif %}
 
-{% if result %}
-<div class="card result-card">
-    <h2>{{ result.vocabulary }}</h2>
+{% if word %}
 
-    {% if source == "db" %}
-        <p class="source-text">DB 저장 데이터</p>
-    {% elif source == "openai" %}
-        <p class="source-text">AI 생성 후 DB 저장</p>
+<div class="card word-hero-card">
+
+    <div class="word-hero-top">
+        <div>
+            <h2 class="word-hero-title">{{ word.vocabulary }}</h2>
+
+            {% if word.pronunciation %}
+            <div class="word-pronunciation">{{ word.pronunciation }}</div>
+            {% endif %}
+        </div>
+    </div>
+
+    <div class="word-hero-meaning">
+        {{ word.definition or "-" }}
+    </div>
+
+    {% if word.sentence %}
+    <div class="word-hero-sentence">
+        “{{ word.sentence }}”
+    </div>
     {% endif %}
 
-    <div class="result-section">
-        <h3>뜻</h3>
-        <p>{{ result.definition }}</p>
-    </div>
-
-    <div class="result-section">
-        <h3>예문</h3>
-        <p>{{ result.sentence }}</p>
-    </div>
-
-    <div class="result-section">
-        <h3>동의어</h3>
-        <p>{{ result.synonyms }}</p>
-    </div>
-
-    <div class="result-section usage-note-box">
-        <h3>뉘앙스 / 실생활 사용법</h3>
-        <p>{{ result.usage_note }}</p>
-    </div>
 </div>
+
+
+{% if word.entries %}
+<div class="card detail-card">
+
+    <h3 class="detail-title">품사별 정의</h3>
+
+    <div class="pos-card-list">
+
+        {% for entry in word.entries %}
+        <div class="pos-card">
+
+            <div class="pos-card-header">
+                <span class="pos-badge">{{ entry.part_of_speech }}</span>
+
+                {% if entry.korean_meaning and entry.korean_meaning != word.definition %}
+                <span class="pos-korean">{{ entry.korean_meaning }}</span>
+                {% endif %}
+            </div>
+
+            {% if entry.definitions %}
+            <ul class="clean-list">
+                {% for definition in entry.definitions %}
+                <li>{{ definition }}</li>
+                {% endfor %}
+            </ul>
+            {% endif %}
+
+        </div>
+        {% endfor %}
+
+    </div>
+
+</div>
+{% endif %}
+
+
+{% if word.synonyms or word.antonyms %}
+<div class="card detail-card">
+
+    <div class="tag-grid">
+
+        <div>
+            <h3 class="detail-title">동의어</h3>
+
+            {% if word.synonyms %}
+            <div class="tag-wrap">
+                {% for synonym in word.synonyms.split(",") %}
+                    {% if synonym.strip() %}
+                    <span class="word-tag">{{ synonym.strip() }}</span>
+                    {% endif %}
+                {% endfor %}
+            </div>
+            {% else %}
+            <p class="muted">-</p>
+            {% endif %}
+        </div>
+
+        <div>
+            <h3 class="detail-title">반의어</h3>
+
+            {% if word.antonyms %}
+            <div class="tag-wrap">
+                {% for antonym in word.antonyms.split(",") %}
+                    {% if antonym.strip() %}
+                    <span class="word-tag danger-tag">{{ antonym.strip() }}</span>
+                    {% endif %}
+                {% endfor %}
+            </div>
+            {% else %}
+            <p class="muted">-</p>
+            {% endif %}
+        </div>
+
+    </div>
+
+</div>
+{% endif %}
+
+
+{% if word.examples %}
+<div class="card detail-card">
+
+    <h3 class="detail-title">예문</h3>
+
+    <div class="example-card-list">
+        {% for example in word.examples %}
+        <div class="example-card">
+            {{ example }}
+        </div>
+        {% endfor %}
+    </div>
+
+</div>
+{% endif %}
+
+
+{% if word.usage_note %}
+<div class="card detail-card">
+
+    <h3 class="detail-title">Usage Note</h3>
+
+    <div class="usage-note-clean">
+        {{ word.usage_note }}
+    </div>
+
+</div>
+{% endif %}
+
+
+{% if word.etymology_summary %}
+<div class="card detail-card">
+
+    <h3 class="detail-title">어원</h3>
+
+    <p class="etymology-text">{{ word.etymology_summary }}</p>
+
+</div>
+{% endif %}
+
 {% endif %}
 
 {% endblock %}

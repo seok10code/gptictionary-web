@@ -46,9 +46,11 @@
             <tr>
                 <th>ID</th>
                 <th>단어</th>
+                <th>발음</th>
                 <th>뜻</th>
                 <th>예문</th>
                 <th>동의어</th>
+                <th>반의어</th>
                 <th>Priority</th>
                 <th>Memorize</th>
             </tr>
@@ -61,9 +63,11 @@
             <tr>
                 <td>{{ word.id }}</td>
                 <td class="word-main">{{ word.vocabulary }}</td>
+                <td>{{ word.pronunciation or "-" }}</td>
                 <td>{{ word.definition }}</td>
                 <td class="sentence-cell">{{ word.sentence }}</td>
-                <td>{{ word.synonyms }}</td>
+                <td>{{ word.synonyms or "-" }}</td>
+                <td>{{ word.antonyms or "-" }}</td>
                 <td>{{ word.priority }}</td>
                 <td>{{ word.memorize_count }}</td>
             </tr>
@@ -71,7 +75,7 @@
             {% else %}
 
             <tr>
-                <td colspan="7" class="empty-row">
+                <td colspan="9" class="empty-row">
                     저장된 단어가 없습니다.
                 </td>
             </tr>

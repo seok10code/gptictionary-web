@@ -15,6 +15,8 @@ from backend.app.api.routes.search import router as search_router
 
 from backend.app.db.database import get_db
 from backend.app.services.stats_service import get_dashboard_data
+from fastapi.responses import FileResponse
+
 
 
 BASE_DIR = Path(__file__).resolve().parent
@@ -27,6 +29,10 @@ app.include_router(quiz_router)
 app.include_router(questions_router)
 app.include_router(settings_router)
 app.include_router(search_router)
+
+@app.get("/favicon.ico", include_in_schema=False)
+async def favicon():
+    return FileResponse("backend/app/static/favicon.png")
 
 
 app.mount(

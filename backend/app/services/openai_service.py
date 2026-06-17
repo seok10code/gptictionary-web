@@ -3,6 +3,8 @@ import json
 from dotenv import load_dotenv
 from openai import OpenAI
 
+from backend.app.services.wiktionary_mcp_service import lookup_wiktionary
+
 
 load_dotenv()
 
@@ -11,54 +13,104 @@ client = OpenAI(
 )
 
 
-def generate_word_info(vocabulary: str) -> dict:
+async def generate_word_info(vocabulary: str) -> dict:
+    wiktionary_data = await lookup_wiktionary(vocabulary)
+
+    if not wiktionary_data.get("found"):
+        return {
+            "valid": False
+        }
+
+    wiktionary_context = json.dumps(
+        wiktionary_data,
+        ensure_ascii=False,
+        indent=2
+    )
+
     prompt = f"""
-        You are an expert English teacher for Korean learners.
+            You are an expert English teacher for Korean learners.
 
-        First determine whether the input is a valid English word or phrase.
+            You will receive raw Wiktionary data for an English word or phrase.
 
-        Return ONLY valid JSON.
-        Do not use markdown.
-        Do not add explanations outside JSON.
+            Your task is NOT to invent new dictionary information.
+            Your task is to select, clean, simplify, and organize the most useful information for Korean English learners.
 
-        If the input is NOT a valid English word or phrase, return:
-        {{
-        "valid": false
-        }}
+            Return ONLY valid JSON.
+            Do not use markdown.
+            Do not add explanations outside JSON.
 
-        If the input IS valid, return:
-        {{
-        "valid": true,
-        "vocabulary": "{vocabulary}",
-        "definition": "Natural Korean meaning",
-        "sentence": "Natural English example sentence using the word or phrase",
-        "synonyms": "synonym1, synonym2, synonym3",
-        "usage_note": "Korean nuance explanation + real-life usage + two short English conversation examples"
-        }}
+            Return this exact JSON structure:
 
-        Requirements:
-        - definition must be Korean.
-        - sentence must be natural everyday English.
-        - synonyms should be comma-separated.
-        - usage_note must be written mostly in Korean.
-        - usage_note must explain how native speakers use it in real conversation.
-        - usage_note must include two short realistic English conversation examples.
-        - Each conversation example must have A and B lines.
-        - Do not make usage_note too long.
-        - Avoid dictionary-style explanation only.
+            {{
+            "valid": true,
+            "vocabulary": "{vocabulary}",
+            "entries": [
+                {{
+                "part_of_speech": "Adjective",
+                "korean_meaning": "자연스러운 한국어 뜻",
+                "definitions": [
+                    "Short English definition 1",
+                    "Short English definition 2"
+                ]
+                }}
+            ],
+            "definition": "대표 한국어 뜻",
+            "sentence": "One natural English example sentence",
+            "pronunciation": "Most common IPA pronunciation",
+            "synonyms": [
+                "common synonym 1",
+                "common synonym 2",
+                "common synonym 3",
+                "common synonym 4"
+            ],
+            "antonyms": [
+                "common antonym 1",
+                "common antonym 2",
+                "common antonym 3",
+                "common antonym 4"
+            ],
+            "examples": [
+                "Useful example sentence 1",
+                "Useful example sentence 2",
+                "Useful example sentence 3",
+                "Useful example sentence 4"
+            ],
+            "etymology_summary": "어원을 한국어로 짧고 자연스럽게 요약",
+            "usage_note": "한국어 뉘앙스 설명 + 실제 대화 예시 2개"
+            }}
 
-        usage_note format:
-        "이 표현은 ... 뉘앙스로 쓰입니다. 실제 대화에서는 ... 상황에서 자주 씁니다.
+            Rules:
+            - Keep all useful part_of_speech categories from Wiktionary, such as Adjective, Noun, Verb, etc.
+            - For each part_of_speech, keep only the most common and useful meanings.
+            - definitions must be in English.
+            - korean_meaning must be in Korean.
+            - definition must be a short representative Korean meaning for the word.
+            - sentence must be one natural everyday English sentence.
+            - pronunciation should be the most common IPA only. If unclear, use an empty string.
+            - synonyms must be up to 4 common useful words only.
+            - antonyms must be up to 4 common useful words only.
+            - examples must be up to 4 useful natural examples only.
+            - etymology_summary must be in Korean and short.
+            - If the raw etymology is broken, unclear, or useless, return an empty string for etymology_summary.
+            - usage_note must be mostly Korean.
+            - usage_note must explain how native speakers use the word in real conversation.
+            - usage_note must include two short realistic English conversation examples.
+            - Do not include rare, archaic, religious, obsolete, or overly technical meanings unless they are very commonly used today.
+            - Do not make the response too long.
 
-        실제 대화 1:
-        A: ...
-        B: ...
+            usage_note format:
+            "이 표현은 ... 뉘앙스로 쓰입니다. 실제 대화에서는 ... 상황에서 자주 씁니다.
 
-        실제 대화 2:
-        A: ...
-        B: ..."
+            실제 대화 1:
+            A: ...
+            B: ...
 
-        Input: {vocabulary}
+            실제 대화 2:
+            A: ...
+            B: ..."
+
+            Raw Wiktionary data:
+            {wiktionary_context}
         """
 
     response = client.chat.completions.create(
@@ -67,7 +119,7 @@ def generate_word_info(vocabulary: str) -> dict:
             {
                 "role": "system",
                 "content": (
-                    "You are an English teacher. "
+                    "You are an English learning data editor. "
                     "Return valid JSON only."
                 )
             },
@@ -76,18 +128,27 @@ def generate_word_info(vocabulary: str) -> dict:
                 "content": prompt
             }
         ],
-        temperature=0.3
+        temperature=0.2
     )
 
     content = response.choices[0].message.content.strip()
 
     try:
-        return json.loads(content)
+        result = json.loads(content)
 
     except Exception:
         return {
             "valid": False
         }
+
+    if not result.get("valid"):
+        return {
+            "valid": False
+        }
+
+    result["raw_wiktionary"] = wiktionary_data
+
+    return result
 
 
 def ask_openai(question: str) -> str:
