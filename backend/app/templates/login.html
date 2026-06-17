@@ -1,0 +1,41 @@
+{% extends "base.html" %}
+
+{% block content %}
+
+<div class="login-wrapper">
+
+    <div class="login-card">
+
+        <h1>🔐 gptictionary</h1>
+
+        <p>
+            비밀번호를 입력해주세요.
+        </p>
+
+        {% if error %}
+        <div class="login-error">
+            {{ error }}
+        </div>
+        {% endif %}
+
+        <form method="post" action="/login">
+
+            <input
+                class="input"
+                type="password"
+                name="password"
+                placeholder="비밀번호"
+                required
+            >
+
+            <button class="btn login-btn" type="submit">
+                로그인
+            </button>
+
+        </form>
+
+    </div>
+
+</div>
+
+{% endblock %}

@@ -687,3 +687,14 @@ button:hover {
         font-size: 28px;
     }
 }
+
+
+.sidebar {
+    display: flex;
+    flex-direction: column;
+}
+
+.sidebar-bottom {
+    margin-top: auto;
+    padding-top: 18px;
+}
