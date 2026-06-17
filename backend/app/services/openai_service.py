@@ -23,134 +23,141 @@ async def generate_word_info(vocabulary: str) -> dict:
             "valid": False
         }
 
-    wiktionary_context = json.dumps(
-        wiktionary_data,
-        ensure_ascii=False,
-        indent=2
-    )
+    entries = wiktionary_data.get("entries", [])
+    pronunciations = wiktionary_data.get("pronunciations", [])
+    synonyms = wiktionary_data.get("synonyms", [])
+    antonyms = wiktionary_data.get("antonyms", [])
+    examples = wiktionary_data.get("examples", [])
+    etymology = wiktionary_data.get("etymology", "")
+
+    cleaned_entries = []
+
+    for entry in entries[:4]:
+        definitions = [
+            definition
+            for definition in entry.get("definitions", [])
+            if definition
+        ][:3]
+
+        if not definitions:
+            continue
+
+        cleaned_entries.append(
+            {
+                "part_of_speech": entry.get("part_of_speech", ""),
+                "korean_meaning": "",
+                "definitions": definitions
+            }
+        )
+
+    if not cleaned_entries:
+        return {
+            "valid": False
+        }
+
+    first_definition = cleaned_entries[0]["definitions"][0]
+    first_example = examples[0] if examples else ""
 
     prompt = f"""
-            You are an expert English teacher for Korean learners.
+You are an English teacher for Korean learners.
 
-            You will receive raw Wiktionary data for an English word or phrase.
+Return ONLY valid JSON.
+Do not use markdown.
+Do not add explanations outside JSON.
 
-            Your task is NOT to invent new dictionary information.
-            Your task is to select, clean, simplify, and organize the most useful information for Korean English learners.
+Word: {vocabulary}
 
-            Return ONLY valid JSON.
-            Do not use markdown.
-            Do not add explanations outside JSON.
+Main English definition:
+{first_definition}
 
-            Return this exact JSON structure:
+Example:
+{first_example}
 
-            {{
-            "valid": true,
-            "vocabulary": "{vocabulary}",
-            "entries": [
-                {{
-                "part_of_speech": "Adjective",
-                "korean_meaning": "자연스러운 한국어 뜻",
-                "definitions": [
-                    "Short English definition 1",
-                    "Short English definition 2"
-                ]
-                }}
-            ],
-            "definition": "대표 한국어 뜻",
-            "sentence": "One natural English example sentence",
-            "pronunciation": "Most common IPA pronunciation",
-            "synonyms": [
-                "common synonym 1",
-                "common synonym 2",
-                "common synonym 3",
-                "common synonym 4"
-            ],
-            "antonyms": [
-                "common antonym 1",
-                "common antonym 2",
-                "common antonym 3",
-                "common antonym 4"
-            ],
-            "examples": [
-                "Useful example sentence 1",
-                "Useful example sentence 2",
-                "Useful example sentence 3",
-                "Useful example sentence 4"
-            ],
-            "etymology_summary": "어원을 한국어로 짧고 자연스럽게 요약",
-            "usage_note": "한국어 뉘앙스 설명 + 실제 대화 예시 2개"
-            }}
+Entries:
+{json.dumps(cleaned_entries, ensure_ascii=False)}
 
-            Rules:
-            - Keep all useful part_of_speech categories from Wiktionary, such as Adjective, Noun, Verb, etc.
-            - For each part_of_speech, keep only the most common and useful meanings.
-            - definitions must be in English.
-            - korean_meaning must be in Korean.
-            - definition must be a short representative Korean meaning for the word.
-            - sentence must be one natural everyday English sentence.
-            - pronunciation should be the most common IPA only. If unclear, use an empty string.
-            - synonyms must be up to 4 common useful words only.
-            - antonyms must be up to 4 common useful words only.
-            - examples must be up to 4 useful natural examples only.
-            - etymology_summary must be in Korean and short.
-            - If the raw etymology is broken, unclear, or useless, return an empty string for etymology_summary.
-            - usage_note must be mostly Korean.
-            - usage_note must explain how native speakers use the word in real conversation.
-            - usage_note must include two short realistic English conversation examples.
-            - Do not include rare, archaic, religious, obsolete, or overly technical meanings unless they are very commonly used today.
-            - Do not make the response too long.
+Raw etymology:
+{etymology[:500]}
 
-            usage_note format:
-            "이 표현은 ... 뉘앙스로 쓰입니다. 실제 대화에서는 ... 상황에서 자주 씁니다.
+Return this JSON structure:
 
-            실제 대화 1:
-            A: ...
-            B: ...
+{{
+    "definition": "대표 한국어 뜻",
+    "entries_korean": [
+        {{
+            "part_of_speech": "same part_of_speech",
+            "korean_meaning": "한국어 뜻"
+        }}
+    ],
+    "sentence": "Natural English example sentence using the word",
+    "usage_note": "한국어 뉘앙스 설명 + 실제 대화 예시 2개",
+    "etymology_summary": "어원이 유용하면 한국어로 짧게, 아니면 빈 문자열"
+}}
 
-            실제 대화 2:
-            A: ...
-            B: ..."
-
-            Raw Wiktionary data:
-            {wiktionary_context}
-        """
-
-    response = client.chat.completions.create(
-        model="gpt-4o-mini",
-        messages=[
-            {
-                "role": "system",
-                "content": (
-                    "You are an English learning data editor. "
-                    "Return valid JSON only."
-                )
-            },
-            {
-                "role": "user",
-                "content": prompt
-            }
-        ],
-        temperature=0.2
-    )
-
-    content = response.choices[0].message.content.strip()
+Rules:
+- definition must be short Korean.
+- entries_korean must match the part_of_speech values in Entries.
+- sentence should be natural and use the word.
+- usage_note must be mostly Korean.
+- usage_note must include two short realistic English conversation examples.
+- Keep everything concise.
+"""
 
     try:
-        result = json.loads(content)
+        response = client.chat.completions.create(
+            model="gpt-4o-mini",
+            messages=[
+                {
+                    "role": "system",
+                    "content": "Return valid JSON only."
+                },
+                {
+                    "role": "user",
+                    "content": prompt
+                }
+            ],
+            temperature=0.2
+        )
+
+        content = response.choices[0].message.content.strip()
+        ai_result = json.loads(content)
 
     except Exception:
-        return {
-            "valid": False
-        }
+        ai_result = {}
 
-    if not result.get("valid"):
-        return {
-            "valid": False
-        }
+    korean_map = {
+        item.get("part_of_speech"): item.get("korean_meaning", "")
+        for item in ai_result.get("entries_korean", [])
+        if isinstance(item, dict)
+    }
 
-    result["raw_wiktionary"] = wiktionary_data
+    final_entries = []
 
-    return result
+    for entry in cleaned_entries:
+        part_of_speech = entry.get("part_of_speech", "")
+
+        final_entries.append(
+            {
+                "part_of_speech": part_of_speech,
+                "korean_meaning": korean_map.get(part_of_speech, ""),
+                "definitions": entry.get("definitions", [])
+            }
+        )
+
+    return {
+        "valid": True,
+        "vocabulary": vocabulary,
+        "entries": final_entries,
+        "definition": ai_result.get("definition", ""),
+        "sentence": ai_result.get("sentence", first_example),
+        "pronunciation": pronunciations[0] if pronunciations else "",
+        "synonyms": synonyms[:4],
+        "antonyms": antonyms[:4],
+        "examples": examples[:4],
+        "etymology_summary": ai_result.get("etymology_summary", ""),
+        "usage_note": ai_result.get("usage_note", ""),
+        "raw_wiktionary": wiktionary_data
+    }
 
 
 def ask_openai(question: str) -> str:
