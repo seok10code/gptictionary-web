@@ -19,93 +19,69 @@ async def generate_word_info(vocabulary: str) -> dict:
     wiktionary_data = await lookup_wiktionary(vocabulary)
 
     if not wiktionary_data.get("found"):
-        return {
-            "valid": False
-        }
+        return {"valid": False}
 
-    entries = wiktionary_data.get("entries", [])
-    pronunciations = wiktionary_data.get("pronunciations", [])
-    synonyms = wiktionary_data.get("synonyms", [])
-    antonyms = wiktionary_data.get("antonyms", [])
-    examples = wiktionary_data.get("examples", [])
-    etymology = wiktionary_data.get("etymology", "")
-
-    cleaned_entries = []
-
-    for entry in entries[:4]:
-        definitions = [
-            definition
-            for definition in entry.get("definitions", [])
-            if definition
-        ][:3]
-
-        if not definitions:
-            continue
-
-        cleaned_entries.append(
-            {
-                "part_of_speech": entry.get("part_of_speech", ""),
-                "korean_meaning": "",
-                "definitions": definitions
-            }
-        )
-
-    if not cleaned_entries:
-        return {
-            "valid": False
-        }
-
-    first_definition = cleaned_entries[0]["definitions"][0]
-    first_example = examples[0] if examples else ""
+    wiktionary_context = json.dumps(
+        wiktionary_data,
+        ensure_ascii=False,
+        indent=2
+    )
 
     prompt = f"""
-You are an English teacher for Korean learners.
+You are an expert English teacher for Korean learners.
 
+Use the Wiktionary data below as the source.
 Return ONLY valid JSON.
 Do not use markdown.
-Do not add explanations outside JSON.
 
 Word: {vocabulary}
 
-Main English definition:
-{first_definition}
-
-Example:
-{first_example}
-
-Entries:
-{json.dumps(cleaned_entries, ensure_ascii=False)}
-
-Raw etymology:
-{etymology[:500]}
-
-Return this JSON structure:
+Return this exact JSON structure:
 
 {{
-    "definition": "대표 한국어 뜻",
-    "entries_korean": [
-        {{
-            "part_of_speech": "same part_of_speech",
-            "korean_meaning": "한국어 뜻"
-        }}
-    ],
-    "sentence": "Natural English example sentence using the word",
-    "usage_note": "한국어 뉘앙스 설명 + 실제 대화 예시 2개",
-    "etymology_summary": "어원이 유용하면 한국어로 짧게, 아니면 빈 문자열"
+  "valid": true,
+  "vocabulary": "{vocabulary}",
+  "definition": "대표 한국어 뜻",
+  "entries": [
+    {{
+      "part_of_speech": "Verb",
+      "korean_meaning": "한국어 뜻",
+      "definitions": [
+        "Short English definition"
+      ]
+    }}
+  ],
+  "sentence": "Natural English example sentence",
+  "pronunciation": "IPA pronunciation",
+  "synonyms": ["synonym1", "synonym2"],
+  "antonyms": ["antonym1", "antonym2"],
+  "examples": [
+    "Useful English example 1",
+    "Useful English example 2"
+  ],
+  "etymology_summary": "어원이 유용하면 한국어로 짧게, 아니면 빈 문자열",
+  "usage_note": "이 표현은 ... 뉘앙스로 쓰입니다.\\n\\n실제 대화 1:\\nA: English sentence\\nB: English sentence\\n\\n실제 대화 2:\\nA: English sentence\\nB: English sentence"
 }}
 
 Rules:
-- definition must be short Korean.
-- entries_korean must match the part_of_speech values in Entries.
-- sentence should be natural and use the word.
-- usage_note must be mostly Korean.
-- usage_note must include two short realistic English conversation examples.
+- definition must be Korean.
+- korean_meaning must be Korean.
+- definitions must be English.
+- usage_note explanation must be Korean.
+- A and B conversation lines must be English only.
+- Do not use Korean in A or B lines.
+- usage_note must contain line breaks.
+- Do not include wiki markup like {{}}, [[]], <ref>, or CSS.
 - Keep everything concise.
+
+Wiktionary data:
+{wiktionary_context}
 """
 
     try:
         response = client.chat.completions.create(
             model="gpt-4o-mini",
+            response_format={"type": "json_object"},
             messages=[
                 {
                     "role": "system",
@@ -120,44 +96,18 @@ Rules:
         )
 
         content = response.choices[0].message.content.strip()
-        ai_result = json.loads(content)
+        result = json.loads(content)
 
-    except Exception:
-        ai_result = {}
+    except Exception as e:
+        print("OPENAI WORD GENERATION ERROR:", repr(e))
+        return {"valid": False}
 
-    korean_map = {
-        item.get("part_of_speech"): item.get("korean_meaning", "")
-        for item in ai_result.get("entries_korean", [])
-        if isinstance(item, dict)
-    }
+    if not result.get("valid"):
+        return {"valid": False}
 
-    final_entries = []
+    result["raw_wiktionary"] = wiktionary_data
 
-    for entry in cleaned_entries:
-        part_of_speech = entry.get("part_of_speech", "")
-
-        final_entries.append(
-            {
-                "part_of_speech": part_of_speech,
-                "korean_meaning": korean_map.get(part_of_speech, ""),
-                "definitions": entry.get("definitions", [])
-            }
-        )
-
-    return {
-        "valid": True,
-        "vocabulary": vocabulary,
-        "entries": final_entries,
-        "definition": ai_result.get("definition", ""),
-        "sentence": ai_result.get("sentence", first_example),
-        "pronunciation": pronunciations[0] if pronunciations else "",
-        "synonyms": synonyms[:4],
-        "antonyms": antonyms[:4],
-        "examples": examples[:4],
-        "etymology_summary": ai_result.get("etymology_summary", ""),
-        "usage_note": ai_result.get("usage_note", ""),
-        "raw_wiktionary": wiktionary_data
-    }
+    return result
 
 
 def ask_openai(question: str) -> str:
@@ -181,83 +131,60 @@ def ask_openai(question: str) -> str:
 
 def extract_word_candidate(question: str, answer: str) -> dict | None:
     prompt = f"""
-        You are an expert English teacher for Korean learners.
+You are an expert English teacher for Korean learners.
 
-        From the user's question and the answer, extract ONE useful English word or phrase worth saving to a vocabulary notebook.
+From the user's question and answer, extract ONE useful English word or phrase worth saving.
 
-        Return ONLY valid JSON.
-        Do not use markdown.
-        Do not add explanations outside JSON.
+Return ONLY valid JSON.
 
-        If there is no useful English word or phrase to save, return:
-        {{
-        "has_candidate": false
-        }}
+If there is no useful word, return:
+{{
+  "has_candidate": false
+}}
 
-        If there is a useful word or phrase, return:
-        {{
-        "has_candidate": true,
-        "vocabulary": "English word or phrase",
-        "definition": "Natural Korean meaning",
-        "sentence": "Natural English example sentence using the word or phrase",
-        "synonyms": "synonym1, synonym2, synonym3",
-        "usage_note": "Korean nuance explanation + real-life usage + two short English conversation examples"
-        }}
+If there is a useful word, return:
+{{
+  "has_candidate": true,
+  "vocabulary": "English word or phrase",
+  "definition": "Natural Korean meaning",
+  "sentence": "Natural English example sentence",
+  "synonyms": "synonym1, synonym2, synonym3",
+  "usage_note": "이 표현은 ... 뉘앙스로 쓰입니다.\\n\\n실제 대화 1:\\nA: English sentence\\nB: English sentence\\n\\n실제 대화 2:\\nA: English sentence\\nB: English sentence"
+}}
 
-        Requirements:
-        - Pick only ONE best expression.
-        - Prefer the expression the user asked about.
-        - Do not extract random common words.
-        - vocabulary must be English only.
-        - definition must be Korean.
-        - sentence must be natural everyday English.
-        - synonyms should be comma-separated.
-        - usage_note must be written mostly in Korean.
-        - usage_note must explain how native speakers use it in real conversation.
-        - usage_note must include two short realistic English conversation examples.
-        - Each conversation example must have A and B lines.
-        - Do not make usage_note too long.
+Rules:
+- vocabulary must be English.
+- definition must be Korean.
+- sentence must be English.
+- usage_note explanation must be Korean.
+- A and B conversation lines must be English only.
 
-        usage_note format:
-        "이 표현은 ... 뉘앙스로 쓰입니다. 실제 대화에서는 ... 상황에서 자주 씁니다.
+Question: {question}
 
-        실제 대화 1:
-        A: ...
-        B: ...
-
-        실제 대화 2:
-        A: ...
-        B: ..."
-
-        Question: {question}
-
-        Answer: {answer}
-        """
-
-    response = client.chat.completions.create(
-        model="gpt-4o-mini",
-        messages=[
-            {
-                "role": "system",
-                "content": (
-                    "You are an English teacher. "
-                    "Return valid JSON only."
-                )
-            },
-            {
-                "role": "user",
-                "content": prompt
-            }
-        ],
-        temperature=0.2
-    )
-
-    content = response.choices[0].message.content.strip()
+Answer: {answer}
+"""
 
     try:
-        result = json.loads(content)
+        response = client.chat.completions.create(
+            model="gpt-4o-mini",
+            response_format={"type": "json_object"},
+            messages=[
+                {
+                    "role": "system",
+                    "content": "Return valid JSON only."
+                },
+                {
+                    "role": "user",
+                    "content": prompt
+                }
+            ],
+            temperature=0.2
+        )
 
-    except Exception:
+        result = json.loads(response.choices[0].message.content.strip())
+
+    except Exception as e:
+        print("OPENAI EXTRACT WORD ERROR:", repr(e))
         return None
 
     if not result.get("has_candidate"):
