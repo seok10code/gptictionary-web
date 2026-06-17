@@ -10,7 +10,7 @@
 
 <div class="card search-box-card">
 
-    <form method="post" action="/search" class="search-form">
+    <form method="post" action="/search" class="search-form" onsubmit="showSearching()">
 
         <input
             class="input"
@@ -21,11 +21,15 @@
             required
         >
 
-        <button class="btn" type="submit">
+        <button id="search-button" class="btn" type="submit">
             검색
         </button>
 
     </form>
+
+    <p id="searching-message" class="page-desc" style="display: none; margin-top: 16px;">
+        ⏳ 답변 생성 중입니다. 처음 검색하는 단어는 몇 초 정도 걸릴 수 있어요.
+    </p>
 
 </div>
 
@@ -182,5 +186,21 @@
 {% endif %}
 
 {% endif %}
+
+<script>
+function showSearching() {
+    const msg = document.getElementById("searching-message");
+    const btn = document.getElementById("search-button");
+
+    if (msg) {
+        msg.style.display = "block";
+    }
+
+    if (btn) {
+        btn.disabled = true;
+        btn.innerText = "생성 중...";
+    }
+}
+</script>
 
 {% endblock %}
