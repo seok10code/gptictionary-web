@@ -1,13 +1,31 @@
+import re
 import json
+import asyncio
 
-from fastapi import APIRouter, Request, Depends, Form
+from fastapi import APIRouter, Request, Depends, Form, BackgroundTasks, Query
+from fastapi.responses import JSONResponse
 from sqlalchemy.orm import Session
 
 from backend.app.core.templates import templates
-from backend.app.db.database import get_db
+from backend.app.db.database import get_db, SessionLocal
 from backend.app.services.word_service import search_word
+from backend.app.crud.word import get_word_by_vocabulary
+
 
 router = APIRouter()
+
+
+def is_valid_input(vocabulary: str) -> bool:
+    if not vocabulary:
+        return False
+
+    if len(vocabulary) > 50:
+        return False
+
+    if not re.match(r"^[a-zA-Z\s\-']+$", vocabulary):
+        return False
+
+    return True
 
 
 def safe_json_loads(value, default):
@@ -24,9 +42,6 @@ def word_to_dict(word):
     if word is None:
         return None
 
-    entries = safe_json_loads(word.entries_json, [])
-    examples = safe_json_loads(word.examples_json, [])
-
     return {
         "id": word.id,
         "vocabulary": word.vocabulary,
@@ -36,10 +51,38 @@ def word_to_dict(word):
         "pronunciation": word.pronunciation,
         "antonyms": word.antonyms,
         "usage_note": word.usage_note,
-        "entries": entries,
-        "examples": examples,
+        "entries": safe_json_loads(word.entries_json, []),
+        "examples": safe_json_loads(word.examples_json, []),
         "etymology_summary": word.etymology_summary,
     }
+
+
+def create_word_background(query: str):
+    db = SessionLocal()
+
+    try:
+        clean_query = query.strip().lower()
+
+        existing_word = get_word_by_vocabulary(
+            db=db,
+            vocabulary=clean_query,
+        )
+
+        if existing_word:
+            return
+
+        asyncio.run(
+            search_word(
+                db=db,
+                vocabulary=clean_query,
+            )
+        )
+
+    except Exception as e:
+        print("BACKGROUND WORD CREATE ERROR:", e)
+
+    finally:
+        db.close()
 
 
 @router.get("/search")
@@ -60,17 +103,13 @@ def search_page(request: Request):
 @router.post("/search")
 async def search_submit(
     request: Request,
+    background_tasks: BackgroundTasks,
     query: str = Form(...),
     db: Session = Depends(get_db),
 ):
-    result = await search_word(
-        db=db,
-        vocabulary=query,
-    )
+    clean_query = query.strip().lower()
 
-    word_obj = result.get("word")
-
-    if word_obj is None:
+    if not is_valid_input(clean_query):
         return templates.TemplateResponse(
             request=request,
             name="search.html",
@@ -79,20 +118,94 @@ async def search_submit(
                 "query": query,
                 "word": None,
                 "source": None,
-                "error": result.get("message", "단어를 찾지 못했습니다."),
+                "error": "올바른 영어 단어 또는 표현을 입력해주세요.",
             },
         )
 
-    word = word_to_dict(word_obj)
+    existing_word = get_word_by_vocabulary(
+        db=db,
+        vocabulary=clean_query,
+    )
+
+    if existing_word:
+        return templates.TemplateResponse(
+            request=request,
+            name="search.html",
+            context={
+                "request": request,
+                "query": clean_query,
+                "word": word_to_dict(existing_word),
+                "source": "db",
+                "error": None,
+            },
+        )
+
+    background_tasks.add_task(
+        create_word_background,
+        clean_query,
+    )
+
+    return templates.TemplateResponse(
+        request=request,
+        name="search_loading.html",
+        context={
+            "request": request,
+            "query": clean_query,
+        },
+    )
+
+
+@router.get("/search/status")
+def search_status(
+    query: str = Query(...),
+    db: Session = Depends(get_db),
+):
+    clean_query = query.strip().lower()
+
+    word = get_word_by_vocabulary(
+        db=db,
+        vocabulary=clean_query,
+    )
+
+    return JSONResponse(
+        {
+            "ready": word is not None,
+            "query": clean_query,
+        }
+    )
+
+
+@router.get("/search/result")
+def search_result(
+    request: Request,
+    query: str = Query(...),
+    db: Session = Depends(get_db),
+):
+    clean_query = query.strip().lower()
+
+    word = get_word_by_vocabulary(
+        db=db,
+        vocabulary=clean_query,
+    )
+
+    if not word:
+        return templates.TemplateResponse(
+            request=request,
+            name="search_loading.html",
+            context={
+                "request": request,
+                "query": clean_query,
+            },
+        )
 
     return templates.TemplateResponse(
         request=request,
         name="search.html",
         context={
             "request": request,
-            "query": query,
-            "word": word,
-            "source": result.get("source"),
+            "query": clean_query,
+            "word": word_to_dict(word),
+            "source": "db",
             "error": None,
         },
     )
