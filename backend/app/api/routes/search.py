@@ -3,7 +3,7 @@ import json
 import asyncio
 
 from fastapi import APIRouter, Request, Depends, Form, BackgroundTasks, Query
-from fastapi.responses import JSONResponse
+from fastapi.responses import JSONResponse, RedirectResponse
 from sqlalchemy.orm import Session
 
 from backend.app.core.templates import templates
@@ -140,18 +140,45 @@ async def search_submit(
             },
         )
 
-    background_tasks.add_task(
-        create_word_background,
-        clean_query,
-    )
+    try:
+        result = await search_word(
+            db=db,
+            vocabulary=clean_query,
+        )
 
-    return templates.TemplateResponse(
-        request=request,
-        name="search_loading.html",
-        context={
-            "request": request,
-            "query": clean_query,
-        },
+    except Exception as e:
+        print("SEARCH ERROR:", repr(e))
+
+        return templates.TemplateResponse(
+            request=request,
+            name="search.html",
+            context={
+                "request": request,
+                "query": clean_query,
+                "word": None,
+                "source": None,
+                "error": "단어 생성 중 오류가 발생했습니다.",
+            },
+        )
+
+    word = result.get("word") if result else None
+
+    if not word:
+        return templates.TemplateResponse(
+            request=request,
+            name="search.html",
+            context={
+                "request": request,
+                "query": clean_query,
+                "word": None,
+                "source": None,
+                "error": "단어를 찾지 못했습니다.",
+            },
+        )
+
+    return RedirectResponse(
+        url=f"/search/result?query={word.vocabulary}",
+        status_code=303,
     )
 
 
