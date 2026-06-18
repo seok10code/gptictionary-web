@@ -84,7 +84,7 @@ Return this exact JSON structure:
     "Useful English example 2"
   ],
   "etymology_summary": "어원이 유용하면 한국어로 짧게, 아니면 빈 문자열",
-  "usage_note": "이 표현은 ... 뉘앙스로 쓰입니다.\\n\\n실제 대화 1:\\nA: English sentence\\nB: English sentence\\n\\n실제 대화 2:\\nA: English sentence\\nB: English sentence"
+  "usage_note": "이 표현은 ... 뉘앙스로 쓰입니다.\\n\\n💬 실제 대화\\n\\nA: English sentence\\nB: English sentence\\n\\n📝 글쓰기 예문\\n\\nFormal writing example sentence 1.\\n\\nFormal writing example sentence 2."
 }}
 
 Rules:
@@ -97,6 +97,10 @@ Rules:
 - usage_note must contain line breaks.
 - Do not include wiki markup like {{}}, [[]], <ref>, or CSS.
 - Keep everything concise.
+- usage_note must include exactly ONE short real-life conversation.
+- usage_note must include exactly TWO formal writing example sentences.
+- Formal writing examples must be English only.
+- Do not create a second conversation.
 
 Wiktionary data:
 {wiktionary_context}
@@ -178,7 +182,7 @@ If there is a useful word, return:
   "definition": "Natural Korean meaning",
   "sentence": "Natural English example sentence",
   "synonyms": "synonym1, synonym2, synonym3",
-  "usage_note": "이 표현은 ... 뉘앙스로 쓰입니다.\\n\\n실제 대화 1:\\nA: English sentence\\nB: English sentence\\n\\n실제 대화 2:\\nA: English sentence\\nB: English sentence"
+  "usage_note": "이 표현은 ... 뉘앙스로 쓰입니다.\\n\\n💬 실제 대화\\n\\nA: English sentence\\nB: English sentence\\n\\n📝 글쓰기 예문\\n\\nFormal writing example sentence 1.\\n\\nFormal writing example sentence 2."
 }}
 
 Rules:
@@ -187,6 +191,10 @@ Rules:
 - sentence must be English.
 - usage_note explanation must be Korean.
 - A and B conversation lines must be English only.
+- usage_note must include exactly ONE short real-life conversation.
+- usage_note must include exactly TWO formal writing example sentences.
+- Formal writing examples must be English only.
+- Do not create a second conversation.
 
 Question: {question}
 

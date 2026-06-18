@@ -123,6 +123,76 @@ def get_existing_active_question_by_word(db: Session, word_id: int):
     )
 
 
+def get_existing_question_by_word(db: Session, word_id: int):
+    return (
+        db.query(QuizQuestion)
+        .filter(QuizQuestion.word_id == word_id)
+        .order_by(QuizQuestion.id.desc())
+        .first()
+    )
+
+
+def create_question_for_word(db: Session, word: Word, is_active: bool = True):
+    if not word:
+        return None
+
+    if not word.vocabulary or not word.definition:
+        return None
+
+    question_text = make_blank_question(
+        sentence=word.sentence,
+        answer=word.vocabulary
+    )
+
+    if not question_text:
+        question_text = make_definition_question(word)
+
+    existing_question = (
+        db.query(QuizQuestion)
+        .filter(QuizQuestion.word_id == word.id)
+        .filter(QuizQuestion.question == question_text)
+        .first()
+    )
+
+    if existing_question:
+        existing_question.is_active = is_active
+        db.commit()
+        db.refresh(existing_question)
+        return existing_question
+
+    quiz_question = QuizQuestion(
+        word_id=word.id,
+        question=question_text,
+        answer=word.vocabulary,
+        is_active=is_active
+    )
+
+    db.add(quiz_question)
+    db.commit()
+    db.refresh(quiz_question)
+
+    return quiz_question
+
+
+def generate_quiz_question_for_word(db: Session, word: Word):
+    existing_question = get_existing_question_by_word(
+        db=db,
+        word_id=word.id
+    )
+
+    if existing_question:
+        existing_question.is_active = True
+        db.commit()
+        db.refresh(existing_question)
+        return existing_question
+
+    return create_question_for_word(
+        db=db,
+        word=word,
+        is_active=True
+    )
+
+
 def generate_quiz_question(db: Session):
     word = get_word_for_quiz(db)
 
@@ -137,40 +207,11 @@ def generate_quiz_question(db: Session):
     if existing_question:
         return existing_question
 
-    question_text = make_blank_question(
-        sentence=word.sentence,
-        answer=word.vocabulary
-    )
-
-    if not question_text:
-        question_text = make_definition_question(word)
-
-    duplicate_question = (
-        db.query(QuizQuestion)
-        .filter(QuizQuestion.word_id == word.id)
-        .filter(QuizQuestion.question == question_text)
-        .order_by(QuizQuestion.id.desc())
-        .first()
-    )
-
-    if duplicate_question:
-        duplicate_question.is_active = True
-        db.commit()
-        db.refresh(duplicate_question)
-        return duplicate_question
-
-    quiz_question = QuizQuestion(
-        word_id=word.id,
-        question=question_text,
-        answer=word.vocabulary,
+    return create_question_for_word(
+        db=db,
+        word=word,
         is_active=True
     )
-
-    db.add(quiz_question)
-    db.commit()
-    db.refresh(quiz_question)
-
-    return quiz_question
 
 
 def generate_all_quiz_questions(db: Session):
@@ -187,36 +228,25 @@ def generate_all_quiz_questions(db: Session):
     skipped_count = 0
 
     for word in words:
-        question_text = make_blank_question(
-            sentence=word.sentence,
-            answer=word.vocabulary
-        )
-
-        if not question_text:
-            question_text = make_definition_question(word)
-
-        existing_question = (
-            db.query(QuizQuestion)
-            .filter(QuizQuestion.word_id == word.id)
-            .filter(QuizQuestion.question == question_text)
-            .first()
+        existing_question = get_existing_question_by_word(
+            db=db,
+            word_id=word.id
         )
 
         if existing_question:
             skipped_count += 1
             continue
 
-        quiz_question = QuizQuestion(
-            word_id=word.id,
-            question=question_text,
-            answer=word.vocabulary,
+        question = create_question_for_word(
+            db=db,
+            word=word,
             is_active=False
         )
 
-        db.add(quiz_question)
-        created_count += 1
-
-    db.commit()
+        if question:
+            created_count += 1
+        else:
+            skipped_count += 1
 
     return {
         "created_count": created_count,
@@ -274,6 +304,14 @@ def submit_answer(
 
     is_correct = clean_user_answer == clean_correct_answer
 
+    if is_correct:
+        word.memorize_count += 1
+        word.total_correct += 1
+        question.correct_count += 1
+    else:
+        word.total_wrong += 1
+        question.wrong_count += 1
+
     create_quiz_log(
         db=db,
         word_id=word.id,
@@ -283,35 +321,13 @@ def submit_answer(
         is_correct=is_correct
     )
 
-    if is_correct:
-        word.total_correct += 1
-        word.memorize_count += 1
-        question.correct_count += 1
-
-        if word.priority > -10:
-            word.priority -= 1
-
-    else:
-        word.total_wrong += 1
-        question.wrong_count += 1
-
-        if word.priority < 10:
-            word.priority += 1
-
-    question.is_active = False
-
-    if question.correct_count >= 10:
-        word.memorize_count = 0
-
     db.commit()
     db.refresh(word)
     db.refresh(question)
 
     return {
         "is_correct": is_correct,
-        "user_answer": user_answer,
         "correct_answer": question.answer,
-        "question": question,
         "word": word,
-        "hint": make_hint(word),
+        "question": question,
     }

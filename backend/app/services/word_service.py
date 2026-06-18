@@ -4,6 +4,7 @@ from sqlalchemy.orm import Session
 from backend.app.models.word import Word
 from backend.app.schemas.word import WordCreate, WordUpdate
 from backend.app.services.openai_service import generate_word_info
+from backend.app.crud.quiz import generate_quiz_question_for_word
 
 
 def get_words(db: Session):
@@ -44,7 +45,7 @@ def update_word(db: Session, word_id: int, word: WordUpdate):
 
 
 async def search_word(db: Session, vocabulary: str):
-    vocabulary = vocabulary.strip()
+    vocabulary = vocabulary.strip().lower()
 
     existing_word = get_word_by_vocabulary(db, vocabulary)
 
@@ -52,7 +53,7 @@ async def search_word(db: Session, vocabulary: str):
         return {
             "found": True,
             "created": False,
-            "word": existing_word
+            "word": existing_word,
         }
 
     ai_result = await generate_word_info(vocabulary)
@@ -61,7 +62,21 @@ async def search_word(db: Session, vocabulary: str):
         return {
             "found": False,
             "created": False,
-            "message": "유효한 영어 단어 또는 표현을 찾지 못했습니다."
+            "message": "유효한 영어 단어 또는 표현을 찾지 못했습니다.",
+        }
+
+    corrected_vocabulary = ai_result.get("vocabulary", vocabulary).strip().lower()
+
+    existing_corrected_word = get_word_by_vocabulary(
+        db=db,
+        vocabulary=corrected_vocabulary,
+    )
+
+    if existing_corrected_word:
+        return {
+            "found": True,
+            "created": False,
+            "word": existing_corrected_word,
         }
 
     synonyms = ai_result.get("synonyms") or []
@@ -81,12 +96,11 @@ async def search_word(db: Session, vocabulary: str):
         antonyms_text = antonyms
 
     word_create = WordCreate(
-        vocabulary=ai_result.get("vocabulary", vocabulary),
+        vocabulary=corrected_vocabulary,
         definition=ai_result.get("definition", ""),
         sentence=ai_result.get("sentence", ""),
         synonyms=synonyms_text,
         usage_note=ai_result.get("usage_note", ""),
-
         entries_json=json.dumps(entries, ensure_ascii=False),
         pronunciation=ai_result.get("pronunciation", ""),
         antonyms=antonyms_text,
@@ -97,25 +111,24 @@ async def search_word(db: Session, vocabulary: str):
 
     created_word = create_word(db, word_create)
 
+    try:
+        generate_quiz_question_for_word(db, created_word)
+    except Exception as e:
+        print("QUIZ AUTO CREATE ERROR:", repr(e))
+
     return {
         "found": True,
         "created": True,
-        "word": created_word
+        "word": created_word,
     }
 
 
 def save_extracted_word(db: Session, word: WordCreate):
     clean_vocabulary = word.vocabulary.strip().lower()
 
-    if not is_valid_input(clean_vocabulary):
-        return {
-            "valid": False,
-            "message": "올바른 영어 단어 또는 표현이 아닙니다."
-        }
-
     existing_word = get_word_by_vocabulary(
         db=db,
-        vocabulary=clean_vocabulary
+        vocabulary=clean_vocabulary,
     )
 
     if existing_word:
@@ -123,19 +136,24 @@ def save_extracted_word(db: Session, word: WordCreate):
             "valid": True,
             "word": existing_word,
             "source": "db",
-            "message": "이미 저장된 단어입니다."
+            "message": "이미 저장된 단어입니다.",
         }
 
     word.vocabulary = clean_vocabulary
 
     new_word = create_word(
         db=db,
-        word=word
+        word=word,
     )
+
+    try:
+        generate_quiz_question_for_word(db, new_word)
+    except Exception as e:
+        print("QUIZ AUTO CREATE ERROR:", repr(e))
 
     return {
         "valid": True,
         "word": new_word,
         "source": "question_note",
-        "message": "저장되었습니다."
+        "message": "저장되었습니다.",
     }
