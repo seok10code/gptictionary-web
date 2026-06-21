@@ -62,10 +62,14 @@
 
             <tr>
                 <td>{{ word.id }}</td>
-                <td class="word-main">{{ word.vocabulary }}</td>
+                <td class="word-main" data-speak="{{ word.vocabulary }}">
+                    🔊 {{ word.vocabulary }}
+                </td>
                 <td>{{ word.pronunciation or "-" }}</td>
                 <td>{{ word.definition }}</td>
-                <td class="sentence-cell">{{ word.sentence }}</td>
+                <td class="sentence-cell" data-speak="{{ word.sentence }}">
+                    🔊 {{ word.sentence }}
+                </td>
                 <td>{{ word.synonyms or "-" }}</td>
                 <td>{{ word.antonyms or "-" }}</td>
                 <td>{{ word.priority }}</td>

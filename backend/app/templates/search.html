@@ -46,10 +46,14 @@
 
     <div class="word-hero-top">
         <div>
-            <h2 class="word-hero-title">{{ word.vocabulary }}</h2>
+            <h2 class="word-hero-title">
+                <span data-speak="{{ word.vocabulary }}">🔊 {{ word.vocabulary }}</span>
+            </h2>
 
             {% if word.pronunciation %}
-            <div class="word-pronunciation">{{ word.pronunciation }}</div>
+            <div class="word-pronunciation">
+                {{ word.pronunciation }}
+            </div>
             {% endif %}
         </div>
     </div>
@@ -60,7 +64,7 @@
 
     {% if word.sentence %}
     <div class="word-hero-sentence">
-        “{{ word.sentence }}”
+        <span data-speak="{{ word.sentence }}">🔊 “{{ word.sentence }}”</span>
     </div>
     {% endif %}
 
@@ -114,7 +118,9 @@
             <div class="tag-wrap">
                 {% for synonym in word.synonyms.split(",") %}
                     {% if synonym.strip() %}
-                    <span class="word-tag">{{ synonym.strip() }}</span>
+                    <span class="word-tag" data-speak="{{ synonym.strip() }}">
+                        🔊 {{ synonym.strip() }}
+                    </span>
                     {% endif %}
                 {% endfor %}
             </div>
@@ -130,7 +136,9 @@
             <div class="tag-wrap">
                 {% for antonym in word.antonyms.split(",") %}
                     {% if antonym.strip() %}
-                    <span class="word-tag danger-tag">{{ antonym.strip() }}</span>
+                    <span class="word-tag danger-tag" data-speak="{{ antonym.strip() }}">
+                        🔊 {{ antonym.strip() }}
+                    </span>
                     {% endif %}
                 {% endfor %}
             </div>
@@ -153,7 +161,7 @@
     <div class="example-card-list">
         {% for example in word.examples %}
         <div class="example-card">
-            {{ example }}
+            <span data-speak="{{ example }}">🔊 {{ example }}</span>
         </div>
         {% endfor %}
     </div>

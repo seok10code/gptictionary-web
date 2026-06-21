@@ -1,0 +1,213 @@
+{% extends "base.html" %}
+
+{% block content %}
+<div class="wc-page">
+    <h1 class="page-title">Writing Lab</h1>
+    <p class="page-desc">단어장에 있는 단어를 실제 글쓰기에서 써보는 연습입니다.</p>
+
+    <div class="card wc-card">
+        <div class="wc-header">
+            <div>
+                <p class="wc-eyebrow">TODAY'S CHALLENGE</p>
+                <h2 class="wc-title">{{ challenge.topic }}</h2>
+            </div>
+        </div>
+
+        <div class="wc-grid">
+            <div class="wc-mini-box">
+                <p class="wc-mini-label">필수 단어</p>
+                {% if challenge.required_words %}
+                    <div class="wc-word-list">
+                        {% for word in challenge.required_words %}
+                            <span class="wc-badge">{{ word }}</span>
+                        {% endfor %}
+                    </div>
+                {% else %}
+                    <p>없음</p>
+                {% endif %}
+            </div>
+
+            <div class="wc-mini-box">
+                <p class="wc-mini-label">추천 문법</p>
+                <p>{{ challenge.recommended_grammar or "자유 작성" }}</p>
+            </div>
+
+            <div class="wc-mini-box">
+                <p class="wc-mini-label">목표 분량</p>
+                <p>{{ challenge.target_words }}</p>
+            </div>
+        </div>
+
+        <p class="wc-instruction">{{ challenge.instruction_ko }}</p>
+
+        <form method="post" action="/writing" class="wc-form">
+            <input type="hidden" name="topic" value="{{ challenge.topic }}">
+            <input type="hidden" name="required_words" value="{{ challenge.required_words | join(',') }}">
+
+            <textarea
+                id="writing-text"
+                name="original_text"
+                rows="10"
+                placeholder="여기에 영어로 작성하세요..."
+                required
+            >{{ original_text or "" }}</textarea>
+
+            <div class="wc-writing-footer">
+                <span id="word-count">Words: 0 / 80</span>
+                <span id="target-status">목표: 80~120 words</span>
+                <span id="char-count">Characters: 0</span>
+            </div>
+
+            <button type="submit" class="wc-submit-btn">첨삭하기</button>
+        </form>
+    </div>
+
+    {% if result %}
+    <div class="card wc-card wc-result-card">
+        <div class="wc-result-header">
+            <div>
+                <p class="wc-eyebrow">WRITING RESULT</p>
+                <h2 class="wc-title">첨삭 결과</h2>
+            </div>
+
+            <div class="wc-score-box">
+                <span class="wc-score-number">{{ result.overall_score or result.grammar_score }}</span>
+                <span class="wc-score-label">Overall</span>
+            </div>
+        </div>
+
+        {% if result.short_review_ko %}
+        <div class="wc-review-box">
+            {{ result.short_review_ko }}
+        </div>
+        {% endif %}
+
+        <div class="wc-grid">
+            <div class="wc-mini-box">
+                <p class="wc-mini-label">Grammar</p>
+                <p class="wc-score-small">{{ result.grammar_score }}/100</p>
+            </div>
+            <div class="wc-mini-box">
+                <p class="wc-mini-label">Vocabulary</p>
+                <p class="wc-score-small">{{ result.vocab_score }}/100</p>
+            </div>
+            <div class="wc-mini-box">
+                <p class="wc-mini-label">Word Usage</p>
+                <p class="wc-score-small">{{ result.word_usage_score or 0 }}/100</p>
+            </div>
+        </div>
+
+        <h3 class="wc-section-title">필수 단어 사용 여부</h3>
+        <div class="wc-usage-grid">
+            <div class="wc-usage-box wc-success">
+                <h4>사용 성공</h4>
+                {% if result.used_words %}
+                    {% for word in result.used_words %}
+                        <p>✅ {{ word }}</p>
+                    {% endfor %}
+                {% else %}
+                    <p>없음</p>
+                {% endif %}
+            </div>
+
+            <div class="wc-usage-box wc-danger">
+                <h4>미사용</h4>
+                {% if result.missing_words %}
+                    {% for word in result.missing_words %}
+                        <p>❌ {{ word }}</p>
+                    {% endfor %}
+                {% else %}
+                    <p>없음</p>
+                {% endif %}
+            </div>
+        </div>
+
+        <h3 class="wc-section-title">교정본</h3>
+        <div class="wc-text-box">{{ result.corrected_text }}</div>
+
+        <h3 class="wc-section-title">더 자연스러운 버전</h3>
+        <div class="wc-text-box">{{ result.natural_text }}</div>
+
+        <h3 class="wc-section-title">문법 태그</h3>
+        {% if result.grammar_tags %}
+            <div class="wc-word-list">
+                {% for tag in result.grammar_tags %}
+                    <span class="wc-badge">{{ tag }}</span>
+                {% endfor %}
+            </div>
+        {% else %}
+            <p>없음</p>
+        {% endif %}
+
+        <h3 class="wc-section-title">피드백</h3>
+        {% if result.feedback %}
+            <div class="wc-feedback-list">
+                {% for item in result.feedback %}
+                    <div class="wc-feedback-item">
+                        <p class="wc-feedback-type">{{ item.tag }}</p>
+                        <p>
+                            <span class="wc-wrong">{{ item.original }}</span>
+                            →
+                            <span class="wc-right">{{ item.corrected }}</span>
+                        </p>
+                        <p>{{ item.explanation_ko }}</p>
+                    </div>
+                {% endfor %}
+            </div>
+        {% else %}
+            <p>피드백 없음</p>
+        {% endif %}
+    </div>
+    {% endif %}
+</div>
+
+<script>
+document.addEventListener("DOMContentLoaded", function () {
+    const textarea = document.getElementById("writing-text");
+    const wordCount = document.getElementById("word-count");
+    const charCount = document.getElementById("char-count");
+    const targetStatus = document.getElementById("target-status");
+
+    if (!textarea || !wordCount || !charCount || !targetStatus) return;
+
+    const minWords = 80;
+    const maxWords = 120;
+
+    function updateCount() {
+        const rawText = textarea.value;
+        const text = rawText.trim();
+
+        const words = text
+            ? text.split(/\s+/).filter(word => word.length > 0).length
+            : 0;
+
+        const chars = rawText.length;
+
+        charCount.textContent = `Characters: ${chars}`;
+
+        wordCount.classList.remove("wc-count-low", "wc-count-good", "wc-count-over");
+        targetStatus.classList.remove("wc-count-low", "wc-count-good", "wc-count-over");
+
+        if (words < minWords) {
+            wordCount.textContent = `Words: ${words} / ${minWords}`;
+            targetStatus.textContent = `목표까지 ${minWords - words} words 남음`;
+            wordCount.classList.add("wc-count-low");
+            targetStatus.classList.add("wc-count-low");
+        } else if (words <= maxWords) {
+            wordCount.textContent = `Words: ${words} ✅`;
+            targetStatus.textContent = "목표 분량 달성";
+            wordCount.classList.add("wc-count-good");
+            targetStatus.classList.add("wc-count-good");
+        } else {
+            wordCount.textContent = `Words: ${words}`;
+            targetStatus.textContent = `${words - maxWords} words 초과`;
+            wordCount.classList.add("wc-count-over");
+            targetStatus.classList.add("wc-count-over");
+        }
+    }
+
+    textarea.addEventListener("input", updateCount);
+    updateCount();
+});
+</script>
+{% endblock %}

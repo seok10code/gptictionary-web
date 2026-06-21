@@ -755,3 +755,267 @@ button:hover {
     width: 100%;
     max-width: 900px;
 }
+
+
+/* Writing Challenge */
+
+.wc-page {
+    max-width: 1180px;
+}
+
+.wc-card {
+    margin-top: 22px;
+}
+
+.wc-header,
+.wc-result-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    gap: 24px;
+    margin-bottom: 24px;
+}
+
+.wc-eyebrow {
+    font-size: 12px;
+    letter-spacing: 0.12em;
+    color: #818cf8;
+    font-weight: 800;
+    margin-bottom: 8px;
+}
+
+.wc-title {
+    font-size: 26px;
+    line-height: 1.35;
+    color: #f9fafb;
+}
+
+.wc-grid {
+    display: grid;
+    grid-template-columns: repeat(3, 1fr);
+    gap: 16px;
+    margin: 20px 0;
+}
+
+.wc-mini-box,
+.wc-usage-box,
+.wc-review-box,
+.wc-text-box,
+.wc-feedback-item {
+    background: #020617;
+    border: 1px solid #1e293b;
+    border-radius: 16px;
+    padding: 18px;
+}
+
+.wc-mini-label {
+    color: #94a3b8;
+    font-size: 13px;
+    margin-bottom: 10px;
+    font-weight: 700;
+}
+
+.wc-word-list {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 8px;
+}
+
+.wc-badge {
+    display: inline-block;
+    background: rgba(99, 102, 241, 0.2);
+    color: #c7d2fe;
+    padding: 7px 11px;
+    border-radius: 999px;
+    font-size: 13px;
+    font-weight: 800;
+}
+
+.wc-instruction {
+    color: #cbd5e1;
+    margin: 18px 0;
+    line-height: 1.7;
+}
+
+.wc-form textarea {
+    width: 100%;
+    min-height: 260px;
+    background: #020617;
+    color: #f8fafc;
+    border: 1px solid #334155;
+    border-radius: 16px;
+    padding: 18px;
+    font-size: 16px;
+    line-height: 1.7;
+    resize: vertical;
+}
+
+.wc-form textarea:focus {
+    outline: none;
+    border-color: #6366f1;
+}
+
+.wc-submit-btn {
+    margin-top: 16px;
+}
+
+.wc-score-box {
+    width: 112px;
+    height: 112px;
+    border-radius: 26px;
+    background: linear-gradient(135deg, #4f46e5, #8b5cf6);
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    flex-shrink: 0;
+}
+
+.wc-score-number {
+    font-size: 38px;
+    font-weight: 900;
+    color: #ffffff;
+    line-height: 1;
+}
+
+.wc-score-label {
+    color: #e0e7ff;
+    font-size: 13px;
+    margin-top: 6px;
+}
+
+.wc-score-small {
+    font-size: 26px;
+    font-weight: 900;
+    color: #f9fafb;
+}
+
+.wc-review-box {
+    color: #e2e8f0;
+    margin-bottom: 20px;
+    line-height: 1.7;
+    border-left: 4px solid #6366f1;
+}
+
+.wc-section-title {
+    margin: 26px 0 14px;
+    font-size: 20px;
+    color: #f9fafb;
+}
+
+.wc-usage-grid {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 16px;
+}
+
+.wc-usage-box h4 {
+    margin-bottom: 12px;
+}
+
+.wc-success {
+    border-color: rgba(34, 197, 94, 0.45);
+}
+
+.wc-danger {
+    border-color: rgba(239, 68, 68, 0.45);
+}
+
+.wc-text-box {
+    white-space: pre-wrap;
+    line-height: 1.75;
+    color: #e2e8f0;
+}
+
+.wc-feedback-list {
+    display: grid;
+    gap: 14px;
+}
+
+.wc-feedback-type {
+    color: #818cf8;
+    font-size: 13px;
+    font-weight: 800;
+    margin-bottom: 8px;
+}
+
+.wc-wrong {
+    color: #fca5a5;
+    font-weight: 800;
+}
+
+.wc-right {
+    color: #86efac;
+    font-weight: 800;
+}
+
+@media (max-width: 900px) {
+    .wc-grid,
+    .wc-usage-grid {
+        grid-template-columns: 1fr;
+    }
+
+    .wc-header,
+    .wc-result-header {
+        flex-direction: column;
+        align-items: flex-start;
+    }
+}
+
+.wc-writing-footer {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    gap: 14px;
+    margin-top: 10px;
+    padding: 0 4px;
+    color: #94a3b8;
+    font-size: 13px;
+    font-weight: 700;
+    flex-wrap: wrap;
+}
+
+.wc-count-low {
+    color: #94a3b8;
+}
+
+.wc-count-good {
+    color: #22c55e;
+}
+
+.wc-count-over {
+    color: #f97316;
+}
+
+
+[data-speak] {
+    cursor: pointer;
+}
+
+[data-speak]:hover {
+    color: #a5b4fc;
+}
+
+[data-speak] {
+    cursor: pointer;
+}
+
+[data-speak]:hover {
+    color: #a5b4fc;
+}
+
+.word-hero-title[data-speak],
+.word-hero-sentence[data-speak],
+.example-card[data-speak],
+.word-main[data-speak],
+.sentence-cell[data-speak] {
+    transition: color 0.2s ease, transform 0.2s ease;
+}
+
+.word-hero-title[data-speak]:hover,
+.word-hero-sentence[data-speak]:hover,
+.example-card[data-speak]:hover,
+.word-main[data-speak]:hover,
+.sentence-cell[data-speak]:hover {
+    color: #c7d2fe;
+}

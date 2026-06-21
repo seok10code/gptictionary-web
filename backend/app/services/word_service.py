@@ -16,7 +16,13 @@ def get_word_by_id(db: Session, word_id: int):
 
 
 def get_word_by_vocabulary(db: Session, vocabulary: str):
-    return db.query(Word).filter(Word.vocabulary == vocabulary).first()
+    clean_vocabulary = vocabulary.strip().lower()
+
+    return (
+        db.query(Word)
+        .filter(Word.vocabulary == clean_vocabulary)
+        .first()
+    )
 
 
 def create_word(db: Session, word: WordCreate):
@@ -47,6 +53,8 @@ def update_word(db: Session, word_id: int, word: WordUpdate):
 async def search_word(db: Session, vocabulary: str):
     vocabulary = vocabulary.strip().lower()
 
+    # 1차: 사용자가 입력한 값 그대로 DB 검색
+    # 예: awash, awash with, pinch penny, pinch pennies
     existing_word = get_word_by_vocabulary(db, vocabulary)
 
     if existing_word:
@@ -56,6 +64,8 @@ async def search_word(db: Session, vocabulary: str):
             "word": existing_word,
         }
 
+    # 2차: AI가 단어/숙어/표현을 표준 형태로 교정해서 정보 생성
+    # 예: pinch penny -> pinch pennies
     ai_result = await generate_word_info(vocabulary)
 
     if not ai_result.get("valid"):
@@ -67,6 +77,8 @@ async def search_word(db: Session, vocabulary: str):
 
     corrected_vocabulary = ai_result.get("vocabulary", vocabulary).strip().lower()
 
+    # 3차: AI가 교정한 표준 표현으로 DB 재검색
+    # 예: pinch penny 입력 -> corrected_vocabulary = pinch pennies
     existing_corrected_word = get_word_by_vocabulary(
         db=db,
         vocabulary=corrected_vocabulary,
