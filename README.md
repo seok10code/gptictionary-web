@@ -1,123 +1,103 @@
-# GPTictionary Web
+# GPTictionary
 
-GPTictionary Web is a personal English learning platform built with FastAPI.
+GPTictionary is a personal English learning web app that helps you save vocabulary, ask English questions, take quizzes, and practice writing with AI feedback.
 
-Originally started as a Telegram-based vocabulary bot, the project has evolved into a full web application that helps users save vocabulary, search expressions, review learned words, ask English questions, and practice through quizzes.
+The goal is not just to memorize words, but to actually use them in writing and conversation.
+
+---
 
 ## Features
 
 ### Vocabulary Search
 
-* Search English words and expressions
-* Automatically generates:
+Search for English words, phrases, idioms, phrasal verbs, and expressions.
 
-  * Korean definition
-  * Example sentence
-  * Synonyms
-  * Usage notes
-* New vocabulary is automatically saved to the database
+Examples:
 
-### Vocabulary Notebook
+- `awash`
+- `awash with`
+- `come out`
+- `pinch pennies`
+- `This is it`
 
-* View all saved vocabulary
-* Search and sort words
-* Track learning progress
+If the expression is not in the database, GPTictionary generates an explanation using AI and saves it automatically.
 
-### English Question Notebook
+---
 
-* Ask questions about English expressions
-* Answers are generated using OpenAI
-* Question history is stored in Qdrant Vector Database
-* Similar questions can be reused without calling OpenAI again
+### Word Detail
 
-### Quiz System
+Each saved word or expression can include:
 
-* Fill-in-the-blank vocabulary quizzes
-* Automatic scoring
-* Tracks:
+- Korean definition
+- English example sentence
+- pronunciation
+- synonyms
+- antonyms
+- part-of-speech definitions
+- useful examples
+- usage notes
+- short real-life conversation
+- formal writing examples
+- etymology summary
 
-  * Correct answers
-  * Wrong answers
-  * Priority score
-  * Memorization count
-* Generates quizzes from saved vocabulary
+---
 
-### Learning Statistics
+### Text-to-Speech
 
-* Total vocabulary count
-* Most missed words
-* Most memorized words
-* Learning dashboard
+Words and example sentences can be clicked to hear pronunciation.
 
-## Tech Stack
+Supported areas:
 
-### Backend
+- Word list
+- Search result
+- Example sentences
+- Synonyms and antonyms
+- Writing Challenge required words
 
-* FastAPI
-* SQLAlchemy
-* Jinja2
-* PyMySQL
+---
 
-### AI
+### Quiz
 
-* OpenAI GPT-4o-mini
-* OpenAI Embeddings
+GPTictionary automatically creates quiz questions from saved words.
 
-### Database
+Quiz data tracks:
 
-* MariaDB
-* Qdrant Vector Database
+- correct count
+- wrong count
+- user answer
+- correct answer
+- quiz history
 
-### Deployment
+---
 
-* Docker
-* Synology NAS
-* Nginx Reverse Proxy (planned)
+### AI Questions
 
-## Architecture
+Ask English-related questions and save useful answers.
 
-User
-↓
-FastAPI Web
-↓
-MariaDB (Vocabulary Storage)
-↓
-OpenAI API
+Examples:
 
-User Questions
-↓
-Embedding
-↓
-Qdrant Vector DB
-↓
-Similar Question Search
+- `What does "pinch pennies" mean?`
+- `How do I say "야 너 언제 출발할거야?" in English?`
+- `What is the difference between "went" and "have gone"?`
 
-## Project Structure
+Questions can be stored in Qdrant for semantic search and similar-question retrieval.
 
-backend/
-├── api/
-├── crud/
-├── db/
-├── models/
-├── schemas/
-├── services/
-├── static/
-├── templates/
-└── main.py
+---
 
-## Future Plans
+### Writing Lab
 
-* Spaced Repetition System (SRS)
-* AI-generated quiz explanations
-* Review mode
-* User accounts
-* Mobile-friendly UI
-* Domain deployment (gptictionary.com)
-* Graph Database integration
-* Personalized learning recommendations
+Writing Lab creates AI-powered writing challenges using words from your vocabulary database.
 
-## Author
+Example challenge:
 
-Seokwon Kim
+```text
+Topic:
+Describe a time when you had to save money.
 
-Built for practical English learning and long-term vocabulary retention.
+Required words:
+- pinch pennies
+- awash
+- contractor
+
+Target:
+80-120 words
