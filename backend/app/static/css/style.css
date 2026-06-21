@@ -1019,3 +1019,63 @@ button:hover {
 .sentence-cell[data-speak]:hover {
     color: #c7d2fe;
 }
+
+@media (max-width: 900px) {
+    body {
+        display: block !important;
+    }
+
+    .sidebar {
+        width: 100% !important;
+        min-height: auto !important;
+        height: auto !important;
+        padding: 14px 16px !important;
+    }
+
+    .sidebar-top {
+        margin-bottom: 0 !important;
+    }
+
+    .logo-text {
+        display: block !important;
+        font-size: 24px !important;
+    }
+
+    .sidebar-toggle {
+        width: 46px !important;
+        height: 46px !important;
+        font-size: 22px !important;
+    }
+
+    .sidebar > a,
+    .sidebar-bottom {
+        display: none !important;
+    }
+
+    .sidebar.open > a {
+        display: flex !important;
+        align-items: center;
+        gap: 10px;
+        font-size: 18px;
+        padding: 13px 10px;
+    }
+
+    .sidebar.open .sidebar-bottom {
+        display: block !important;
+        margin-top: 12px;
+    }
+
+    .sidebar.open {
+        padding-bottom: 18px !important;
+    }
+
+    .sidebar.open .sidebar-top {
+        margin-bottom: 14px !important;
+    }
+
+    .content {
+        width: 100% !important;
+        padding: 20px 16px !important;
+        overflow-x: hidden;
+    }
+}
