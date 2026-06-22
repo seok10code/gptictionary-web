@@ -484,3 +484,40 @@ def correct_writing_challenge(
     )
 
     return _safe_json_loads(response.choices[0].message.content)
+
+
+def analyze_sentence(sentence: str) -> str:
+    system_prompt = """
+너는 한국인 영어 학습자를 위한 문장 분석 선생님이다.
+
+사용자가 입력한 영어 문장을 아래 형식으로 분석한다.
+
+규칙:
+- 한국어로 쉽게 설명한다.
+- 문장 구조를 끊어서 보여준다.
+- 핵심 문법과 표현을 따로 정리한다.
+- 마지막에 비슷한 예문을 2개 준다.
+
+답변 형식:
+
+1. 전체 뜻
+
+2. 문장 구조
+
+3. 들어간 문법
+
+4. 핵심 표현
+
+5. 비슷한 예문
+"""
+
+    response = client.chat.completions.create(
+        model="gpt-4o-mini",
+        messages=[
+            {"role": "system", "content": system_prompt},
+            {"role": "user", "content": sentence},
+        ],
+        temperature=0.2,
+    )
+
+    return response.choices[0].message.content

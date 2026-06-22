@@ -4,7 +4,11 @@ from sqlalchemy.orm import Session
 
 from backend.app.core.templates import templates
 from backend.app.db.database import get_db
-from backend.app.services.openai_service import ask_openai, extract_word_candidate
+from backend.app.services.openai_service import (
+    ask_openai,
+    extract_word_candidate,
+    analyze_sentence,
+)
 from backend.app.services.embedding_service import create_embedding
 from backend.app.services.qdrant_service import (
     save_question_to_qdrant,
@@ -37,6 +41,7 @@ def questions_page(request: Request):
 def ask_question(
     request: Request,
     question: str = Form(...),
+    mode: str = Form("question"),
     db: Session = Depends(get_db),
 ):
     question = question.strip()
@@ -46,10 +51,19 @@ def ask_question(
 
     print("=" * 80)
     print("USER QUESTION:", question)
+    print("MODE:", mode)
     print("=" * 80)
 
     try:
-        if "몇 개" in question or "몇개" in question or "총" in question:
+        if mode == "sentence":
+            answer = analyze_sentence(question)
+
+            candidate = extract_word_candidate(
+                question=question,
+                answer=answer,
+            )
+
+        elif "몇 개" in question or "몇개" in question or "총" in question:
             count = get_word_count(db)
             answer = f"현재 단어장에는 총 {count}개의 단어가 저장되어 있어."
 
