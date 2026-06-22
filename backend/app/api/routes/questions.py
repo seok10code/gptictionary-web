@@ -44,6 +44,10 @@ def ask_question(
     candidate = None
     similar_questions = []
 
+    print("=" * 80)
+    print("USER QUESTION:", question)
+    print("=" * 80)
+
     try:
         if "몇 개" in question or "몇개" in question or "총" in question:
             count = get_word_count(db)
@@ -65,8 +69,14 @@ def ask_question(
             vector = create_embedding(question)
             results = search_similar_questions(vector, limit=3)
 
+            print("QDRANT RESULTS:")
             for r in results:
-                if r.score >= 0.88:
+                print("score:", round(r.score, 4))
+                print("question:", r.payload.get("question"))
+                print("answer:", r.payload.get("answer"))
+                print("-" * 40)
+
+                if r.score >= 0.97:
                     similar_questions.append(
                         {
                             "score": round(r.score, 4),
@@ -75,10 +85,18 @@ def ask_question(
                         }
                     )
 
+            print("FILTERED SIMILAR QUESTIONS:", similar_questions)
+
             if similar_questions:
+                print("ANSWER SOURCE: QDRANT CACHE")
                 answer = similar_questions[0]["answer"]
             else:
+                print("ANSWER SOURCE: OPENAI")
                 answer = ask_openai(question)
+
+                print("GPT ANSWER:")
+                print(answer)
+
                 save_question_to_qdrant(
                     question=question,
                     answer=answer,
@@ -91,6 +109,7 @@ def ask_question(
             )
 
     except Exception as e:
+        print("QUESTION ERROR:", repr(e))
         answer = f"에러 발생: {str(e)}"
 
     return templates.TemplateResponse(
