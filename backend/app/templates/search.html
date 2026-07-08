@@ -17,7 +17,7 @@
             type="text"
             name="query"
             value="{{ query }}"
-            placeholder="검색할 단어"
+            placeholder="영어 또는 한국어로 검색 (예: reputation / 평판)"
             required
         >
 
@@ -33,12 +33,49 @@
 
 </div>
 
+
+{% if words %}
+
+<div class="card detail-card">
+
+    <h3 class="detail-title">검색 결과</h3>
+
+    <div class="example-card-list">
+
+        {% for w in words %}
+
+        <a
+            href="/search/result?query={{ w.vocabulary }}"
+            class="example-card"
+            style="text-decoration:none;color:inherit;"
+        >
+
+            <h3>{{ w.vocabulary }}</h3>
+
+            <p>{{ w.definition }}</p>
+
+            {% if w.sentence %}
+            <small>{{ w.sentence }}</small>
+            {% endif %}
+
+        </a>
+
+        {% endfor %}
+
+    </div>
+
+</div>
+
+{% endif %}
+
+
 {% if error %}
 <div class="card error-card">
     <h3>오류</h3>
     <p>{{ error }}</p>
 </div>
 {% endif %}
+
 
 {% if word %}
 
@@ -194,6 +231,7 @@
 {% endif %}
 
 {% endif %}
+
 
 <script>
 function showSearching() {

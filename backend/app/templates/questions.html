@@ -1,8 +1,9 @@
 {% extends "base.html" %}
 
 {% block content %}
+
 <h1 class="page-title">질문</h1>
-<p class="page-desc">영어 표현이나 문장에 대해 질문해보세요.</p>
+<p class="page-desc">영어 표현이나 문장에 대해 질문하거나 문장을 분석해보세요.</p>
 
 <div class="card">
     <form method="post" action="/questions">
@@ -17,6 +18,7 @@
 
         <div style="display: flex; gap: 10px; margin-top: 12px;">
             <button
+                class="btn"
                 type="submit"
                 name="mode"
                 value="question"
@@ -25,6 +27,7 @@
             </button>
 
             <button
+                class="btn"
                 type="submit"
                 name="mode"
                 value="sentence"
@@ -35,14 +38,24 @@
     </form>
 </div>
 
+
 {% if answer %}
 <div class="card" style="margin-top: 20px;">
-    <h2>답변</h2>
-    <p style="white-space: pre-line; line-height: 1.7;">{{ answer }}</p>
+
+    {% if mode == "sentence" %}
+        <h2>문장 분석</h2>
+    {% else %}
+        <h2>답변</h2>
+    {% endif %}
+
+    <p style="white-space: pre-line; line-height: 1.7;">
+        {{ answer }}
+    </p>
 </div>
 {% endif %}
 
-{% if candidate %}
+
+{% if candidate and mode != "sentence" %}
 <div class="card" style="margin-top: 20px;">
     <h2>새 표현을 찾았어요. 저장할까요?</h2>
 
@@ -52,6 +65,7 @@
         <p class="muted">{{ candidate.sentence }}</p>
 
         <button
+            class="btn"
             type="button"
             onclick="saveCandidateWord()"
             style="margin-top: 12px;"
@@ -89,7 +103,8 @@ async function saveCandidateWord() {
 </script>
 {% endif %}
 
-{% if similar_questions %}
+
+{% if similar_questions and mode != "sentence" %}
 <div class="card" style="margin-top: 20px;">
     <h2>비슷한 질문</h2>
 
@@ -102,4 +117,5 @@ async function saveCandidateWord() {
     {% endfor %}
 </div>
 {% endif %}
+
 {% endblock %}
