@@ -2,6 +2,7 @@ import re
 import json
 import asyncio
 import os
+from urllib.parse import quote_plus
 
 from fastapi import APIRouter, Request, Depends, Form, BackgroundTasks, Query
 from fastapi.responses import JSONResponse, RedirectResponse
@@ -16,6 +17,28 @@ from backend.app.crud.word import get_word_by_vocabulary
 
 router = APIRouter()
 openai_client = AsyncOpenAI(api_key=os.getenv("OPENAI_API_KEY"))
+
+
+def base_context(
+    request: Request,
+    query: str = "",
+    searched_word=None,
+    word=None,
+    words=None,
+    candidates=None,
+    source=None,
+    error=None,
+):
+    return {
+        "request": request,
+        "query": query,
+        "searched_word": searched_word,
+        "word": word,
+        "words": words or [],
+        "candidates": candidates or [],
+        "source": source,
+        "error": error,
+    }
 
 
 def is_valid_input(vocabulary: str) -> bool:
@@ -41,7 +64,6 @@ def looks_like_question_or_sentence(text: str) -> bool:
     if "?" in text:
         return True
 
-    # 영어/한글 섞인 긴 문장은 검색이 아니라 질문/문장분석으로 보냄
     if len(text.split()) >= 6:
         return True
 
@@ -94,65 +116,102 @@ def word_to_dict(word):
     }
 
 
-async def korean_to_best_english(korean_query: str) -> str | None:
+async def korean_to_english_candidates(korean_query: str) -> list[dict]:
     prompt = f"""
-한국어 입력을 영어 학습용 단어 또는 자연스러운 영어 표현 하나로 변환해줘.
+너는 영어 단어장 앱의 한국어 검색 후보 생성기다.
 
-규칙:
-- 반드시 영어 단어 또는 짧은 영어 표현 하나만 선택
-- 설명 금지
-- JSON만 출력
-- 사물/도구/기기 이름이면 형용사보다 명사구를 우선
-- 너무 넓은 단어보다 실제로 쓰는 표현 우선
-- "리모콘", "리모컨"은 "remote control" 우선
-- "드론 조종기"는 "remote controller" 또는 "controller" 우선
-- 오타가 있어도 자연스럽게 보정
+사용자가 한국어 단어 또는 짧은 표현을 입력하면,
+영어로 번역될 수 있는 자연스러운 후보를 3~6개 반환한다.
+
+중요:
+- 절대 하나로 단정하지 마라.
+- 특히 한국어가 다의어이면 여러 후보를 보여줘라.
+- 사용자가 나중에 선택할 수 있도록 후보별 차이를 한국어로 설명해라.
+- word는 실제 영어 단어장 검색에 넣을 수 있는 영어 단어 또는 짧은 표현이어야 한다.
+- word에는 한국어를 넣지 마라.
+- usage에는 대표적인 collocation이나 사용 상황을 넣어라.
+- part_of_speech는 noun, verb, adjective, expression 등으로 넣어라.
 
 예시:
-리모콘 -> {{"word": "remote control"}}
-추상적 -> {{"word": "abstract"}}
-평판 -> {{"word": "reputation"}}
-연기하다 -> {{"word": "postpone"}}
-사생활 -> {{"word": "privacy"}}
-핸드폰 -> {{"word": "smartphone"}}
+거치대 ->
+stand / 받침대, 세워두는 거치대 / monitor stand, bike stand
+holder / 물건을 끼우거나 잡아주는 거치대 / phone holder, cup holder
+mount / 벽, 차량, 카메라 등에 장착하는 거치대 / camera mount, car mount
+rack / 여러 물건을 얹거나 걸어두는 선반형 거치대 / dish rack, bike rack
 
-입력: {korean_query}
+반환 형식:
+{{
+  "candidates": [
+    {{
+      "word": "stand",
+      "meaning_ko": "받침대, 세워두는 거치대",
+      "usage": "monitor stand, bike stand",
+      "part_of_speech": "noun"
+    }}
+  ]
+}}
+
+규칙:
+- 반드시 JSON만 반환한다.
+- markdown을 쓰지 마라.
+- candidates는 최대 6개.
+- 의미가 불확실하면 그래도 가능한 후보를 넓게 제시한다.
+
+입력:
+{korean_query}
 """
 
-    response = await openai_client.chat.completions.create(
-        model=os.getenv("OPENAI_MODEL", "gpt-4o-mini"),
-        messages=[
-            {
-                "role": "system",
-                "content": "You convert Korean search queries into one natural English vocabulary item or short phrase. Return JSON only.",
-            },
-            {
-                "role": "user",
-                "content": prompt,
-            },
-        ],
-        temperature=0.1,
-    )
-
-    content = response.choices[0].message.content.strip()
-
     try:
+        response = await openai_client.chat.completions.create(
+            model=os.getenv("OPENAI_MODEL", "gpt-4o-mini"),
+            messages=[
+                {
+                    "role": "system",
+                    "content": "Return valid JSON only.",
+                },
+                {
+                    "role": "user",
+                    "content": prompt,
+                },
+            ],
+            temperature=0.2,
+        )
+
+        content = response.choices[0].message.content.strip()
+        print("KOREAN CANDIDATES OPENAI RAW:", content)
+
         data = json.loads(content)
-    except Exception:
-        print("KOREAN TO ENGLISH JSON PARSE ERROR:", content)
-        return None
 
-    word = data.get("word")
+    except Exception as e:
+        print("KOREAN CANDIDATES ERROR:", repr(e))
+        return []
 
-    if not word or not isinstance(word, str):
-        return None
+    candidates = data.get("candidates", [])
 
-    clean_word = word.strip().lower()
+    if not isinstance(candidates, list):
+        return []
 
-    if not is_valid_input(clean_word):
-        return None
+    cleaned_candidates = []
 
-    return clean_word
+    for candidate in candidates:
+        if not isinstance(candidate, dict):
+            continue
+
+        word = str(candidate.get("word", "")).strip().lower()
+
+        if not is_valid_input(word):
+            continue
+
+        cleaned_candidates.append(
+            {
+                "word": word,
+                "meaning_ko": str(candidate.get("meaning_ko", "")).strip(),
+                "usage": str(candidate.get("usage", "")).strip(),
+                "part_of_speech": str(candidate.get("part_of_speech", "")).strip(),
+            }
+        )
+
+    return cleaned_candidates[:6]
 
 
 def create_word_background(query: str):
@@ -188,14 +247,7 @@ def search_page(request: Request):
     return templates.TemplateResponse(
         request=request,
         name="search.html",
-        context={
-            "request": request,
-            "query": "",
-            "word": None,
-            "words": [],
-            "source": None,
-            "error": None,
-        },
+        context=base_context(request=request),
     )
 
 
@@ -209,108 +261,52 @@ async def search_submit(
     raw_query = query.strip()
     clean_query = raw_query.lower()
 
-    # 검색창에는 단어/짧은 표현만 허용
-    # 문장이나 질문은 /questions에서 처리하도록 막음
     if looks_like_question_or_sentence(raw_query):
         return templates.TemplateResponse(
             request=request,
             name="search.html",
-            context={
-                "request": request,
-                "query": raw_query,
-                "word": None,
-                "words": [],
-                "source": None,
-                "error": "문장이나 질문은 '질문' 탭에서 입력해주세요. 단어 검색에는 단어 또는 짧은 표현만 입력해주세요.",
-            },
+            context=base_context(
+                request=request,
+                query=raw_query,
+                error="문장이나 질문은 '질문' 탭에서 입력해주세요. 단어 검색에는 단어 또는 짧은 표현만 입력해주세요.",
+            ),
         )
 
-    # 한국어 단어 검색
-    # 예: 리모콘 -> remote control -> DB 검색 -> 없으면 생성
+    # 한국어 검색: 바로 영어 1개로 확정하지 않고 후보 목록 표시
     if has_korean(raw_query):
-        english_query = await korean_to_best_english(raw_query)
+        candidates = await korean_to_english_candidates(raw_query)
 
-        if not english_query:
+        if not candidates:
             return templates.TemplateResponse(
                 request=request,
                 name="search.html",
-                context={
-                    "request": request,
-                    "query": raw_query,
-                    "word": None,
-                    "words": [],
-                    "source": None,
-                    "error": "한국어 검색어를 영어 단어로 변환하지 못했습니다.",
-                },
+                context=base_context(
+                    request=request,
+                    query=raw_query,
+                    error="한국어 검색 후보를 만들지 못했습니다.",
+                ),
             )
 
-        existing_word = get_word_by_vocabulary(
-            db=db,
-            vocabulary=english_query,
+        return templates.TemplateResponse(
+            request=request,
+            name="search.html",
+            context=base_context(
+                request=request,
+                query=raw_query,
+                candidates=candidates,
+                source="korean_candidates",
+            ),
         )
 
-        if existing_word:
-            return RedirectResponse(
-                url=f"/search/result?query={existing_word.vocabulary}",
-                status_code=303,
-            )
-
-        try:
-            result = await search_word(
-                db=db,
-                vocabulary=english_query,
-            )
-
-        except Exception as e:
-            print("KOREAN SEARCH WORD CREATE ERROR:", repr(e))
-
-            return templates.TemplateResponse(
-                request=request,
-                name="search.html",
-                context={
-                    "request": request,
-                    "query": raw_query,
-                    "word": None,
-                    "words": [],
-                    "source": None,
-                    "error": f"'{english_query}' 단어 생성 중 오류가 발생했습니다.",
-                },
-            )
-
-        word = result.get("word") if result else None
-
-        if not word:
-            return templates.TemplateResponse(
-                request=request,
-                name="search.html",
-                context={
-                    "request": request,
-                    "query": raw_query,
-                    "word": None,
-                    "words": [],
-                    "source": None,
-                    "error": f"'{english_query}' 단어를 찾지 못했습니다.",
-                },
-            )
-
-        return RedirectResponse(
-            url=f"/search/result?query={word.vocabulary}",
-            status_code=303,
-        )
-
-    # 영어 단어/짧은 표현 검색
     if not is_valid_input(clean_query):
         return templates.TemplateResponse(
             request=request,
             name="search.html",
-            context={
-                "request": request,
-                "query": raw_query,
-                "word": None,
-                "words": [],
-                "source": None,
-                "error": "올바른 영어 단어 또는 표현을 입력해주세요.",
-            },
+            context=base_context(
+                request=request,
+                query=raw_query,
+                error="올바른 영어 단어 또는 표현을 입력해주세요.",
+            ),
         )
 
     existing_word = get_word_by_vocabulary(
@@ -322,14 +318,12 @@ async def search_submit(
         return templates.TemplateResponse(
             request=request,
             name="search.html",
-            context={
-                "request": request,
-                "query": clean_query,
-                "word": word_to_dict(existing_word),
-                "words": [],
-                "source": "db",
-                "error": None,
-            },
+            context=base_context(
+                request=request,
+                query=clean_query,
+                word=word_to_dict(existing_word),
+                source="db",
+            ),
         )
 
     try:
@@ -344,14 +338,11 @@ async def search_submit(
         return templates.TemplateResponse(
             request=request,
             name="search.html",
-            context={
-                "request": request,
-                "query": clean_query,
-                "word": None,
-                "words": [],
-                "source": None,
-                "error": "단어 생성 중 오류가 발생했습니다.",
-            },
+            context=base_context(
+                request=request,
+                query=clean_query,
+                error="단어 생성 중 오류가 발생했습니다.",
+            ),
         )
 
     word = result.get("word") if result else None
@@ -360,18 +351,15 @@ async def search_submit(
         return templates.TemplateResponse(
             request=request,
             name="search.html",
-            context={
-                "request": request,
-                "query": clean_query,
-                "word": None,
-                "words": [],
-                "source": None,
-                "error": "단어를 찾지 못했습니다.",
-            },
+            context=base_context(
+                request=request,
+                query=clean_query,
+                error="단어를 찾지 못했습니다.",
+            ),
         )
 
     return RedirectResponse(
-        url=f"/search/result?query={word.vocabulary}",
+        url=f"/search/result?query={quote_plus(word.vocabulary)}",
         status_code=303,
     )
 
@@ -400,9 +388,11 @@ def search_status(
 def search_result(
     request: Request,
     query: str = Query(...),
+    display: str | None = Query(None),
     db: Session = Depends(get_db),
 ):
     clean_query = query.strip().lower()
+    display_query = display.strip() if display else None
 
     word = get_word_by_vocabulary(
         db=db,
@@ -415,19 +405,19 @@ def search_result(
             name="search_loading.html",
             context={
                 "request": request,
-                "query": clean_query,
+                "query": display_query or clean_query,
+                "searched_word": clean_query if display_query else None,
             },
         )
 
     return templates.TemplateResponse(
         request=request,
         name="search.html",
-        context={
-            "request": request,
-            "query": clean_query,
-            "word": word_to_dict(word),
-            "words": [],
-            "source": "db",
-            "error": None,
-        },
+        context=base_context(
+            request=request,
+            query=display_query or clean_query,
+            searched_word=clean_query if display_query else None,
+            word=word_to_dict(word),
+            source="korean_ai" if display_query else "db",
+        ),
     )

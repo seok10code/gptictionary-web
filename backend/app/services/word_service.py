@@ -67,7 +67,9 @@ async def search_word(db: Session, vocabulary: str):
     # 2차: AI가 단어/숙어/표현을 표준 형태로 교정해서 정보 생성
     # 예: pinch penny -> pinch pennies
     ai_result = await generate_word_info(vocabulary)
-
+    print("AI RESULT SYNONYMS:", ai_result.get("synonyms"))
+    print("AI RESULT ANTONYMS:", ai_result.get("antonyms"))
+    
     if not ai_result.get("valid"):
         return {
             "found": False,

@@ -34,38 +34,83 @@
 </div>
 
 
-{% if words %}
+{% if candidates %}
+<div class="card detail-card" style="margin-top: 20px;">
 
+    <h3 class="detail-title">🔍 한국어 검색 후보: {{ query }}</h3>
+
+    <p class="muted">
+        원하는 의미에 가까운 영어 표현을 선택해주세요.
+    </p>
+
+    <div class="example-card-list">
+        {% for c in candidates %}
+        <div class="example-card">
+
+            <h3>{{ c.word }}</h3>
+
+            {% if c.meaning_ko %}
+            <p>{{ c.meaning_ko }}</p>
+            {% endif %}
+
+            {% if c.usage %}
+            <small>예: {{ c.usage }}</small>
+            {% endif %}
+
+            {% if c.part_of_speech %}
+            <p class="muted" style="margin-top: 8px;">
+                품사: {{ c.part_of_speech }}
+            </p>
+            {% endif %}
+
+            <form method="post" action="/search" style="margin-top: 12px;" onsubmit="showSearching()">
+                <input type="hidden" name="query" value="{{ c.word }}">
+                <button class="btn" type="submit">이 뜻으로 검색</button>
+            </form>
+
+        </div>
+        {% endfor %}
+    </div>
+
+</div>
+{% endif %}
+
+
+{% if searched_word %}
+<div class="card" style="margin-top: 20px;">
+    <p class="muted">
+        🔍 한국어 검색:
+        <strong>{{ query }}</strong>
+        →
+        <strong>{{ searched_word }}</strong>
+    </p>
+</div>
+{% endif %}
+
+
+{% if words %}
 <div class="card detail-card">
 
     <h3 class="detail-title">검색 결과</h3>
 
     <div class="example-card-list">
-
         {% for w in words %}
-
         <a
             href="/search/result?query={{ w.vocabulary }}"
             class="example-card"
             style="text-decoration:none;color:inherit;"
         >
-
             <h3>{{ w.vocabulary }}</h3>
-
             <p>{{ w.definition }}</p>
 
             {% if w.sentence %}
             <small>{{ w.sentence }}</small>
             {% endif %}
-
         </a>
-
         {% endfor %}
-
     </div>
 
 </div>
-
 {% endif %}
 
 
@@ -114,7 +159,6 @@
     <h3 class="detail-title">품사별 정의</h3>
 
     <div class="pos-card-list">
-
         {% for entry in word.entries %}
         <div class="pos-card">
 
@@ -136,7 +180,6 @@
 
         </div>
         {% endfor %}
-
     </div>
 
 </div>

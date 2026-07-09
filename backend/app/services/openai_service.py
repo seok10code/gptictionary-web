@@ -102,6 +102,15 @@ async def generate_word_info(vocabulary: str) -> dict:
         - korean_meaning must be Korean.
         - definitions must be English.
         - usage_note explanation must be Korean.
+
+        - Do NOT simply copy Wiktionary's synonyms or antonyms.
+        - If Wiktionary synonyms are empty, generate useful synonyms yourself.
+        - synonyms must contain 3 to 6 useful English synonyms whenever possible.
+        - antonyms must contain 1 to 4 useful English antonyms whenever possible.
+        - Near-synonyms are acceptable if exact synonyms are limited.
+        - Only return an empty synonyms list if the word is a proper noun or genuinely has no meaningful synonym.
+        - Only return an empty antonyms list if no natural opposite exists.
+
         - A and B conversation lines must be English only.
         - Do not use Korean in A or B lines.
         - usage_note must contain line breaks.
