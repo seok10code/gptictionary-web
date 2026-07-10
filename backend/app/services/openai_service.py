@@ -1,9 +1,10 @@
 import os
+import re
 import json
+
 from dotenv import load_dotenv
 from openai import OpenAI
 
-import re
 from backend.app.services.wiktionary_mcp_service import lookup_wiktionary
 
 
@@ -12,7 +13,7 @@ load_dotenv()
 client = OpenAI(
     api_key=os.getenv("OPENAI_API_KEY"),
     timeout=20.0,
-    max_retries=1
+    max_retries=1,
 )
 
 
@@ -24,15 +25,24 @@ async def generate_word_info(vocabulary: str) -> dict:
     correction = correct_word_candidate(original_vocabulary)
 
     if correction.get("found"):
-        corrected_word = correction.get("correct_word", "").strip().lower()
-        correction_korean_meaning = correction.get("korean_meaning", "")
+        corrected_word = correction.get(
+            "correct_word",
+            "",
+        ).strip().lower()
+
+        correction_korean_meaning = correction.get(
+            "korean_meaning",
+            "",
+        )
 
         if corrected_word:
             vocabulary = corrected_word
+
             if corrected_word != original_vocabulary:
                 corrected_from = original_vocabulary
         else:
             vocabulary = original_vocabulary
+
     else:
         vocabulary = original_vocabulary
 
@@ -41,115 +51,141 @@ async def generate_word_info(vocabulary: str) -> dict:
     wiktionary_context = json.dumps(
         wiktionary_data,
         ensure_ascii=False,
-        indent=2
+        indent=2,
     )
 
     prompt = f"""
-        You are an expert English teacher for Korean learners.
+You are an expert English teacher for Korean learners.
 
-        The input may be:
-        - a single English word
-        - an idiom
-        - a phrase
-        - a phrasal verb
-        - a collocation
-        - a slightly incorrect expression that should be corrected to a natural standard form
+The input may be:
+- a single English word
+- an idiom
+- a phrase
+- a phrasal verb
+- a collocation
+- a slightly incorrect expression that should be corrected to a natural standard form
 
-        Return ONLY valid JSON.
-        Do not use markdown.
+Return ONLY valid JSON.
+Do not use markdown.
 
-        Input: {original_vocabulary}
-        Canonical vocabulary to explain: {vocabulary}
+Input: {original_vocabulary}
+Canonical vocabulary to explain: {vocabulary}
 
-        Important:
-        - If the input is a common expression or phrase, it is valid.
-        - If Wiktionary data is missing or weak, use your own English knowledge.
-        - If the input is unnatural but clearly intended, explain the corrected canonical expression.
-        - Example: "pinch penny" should become "pinch pennies".
-        - Example: "awash with" is valid.
-        - Example: "come out" is valid.
+Important:
+- If the input is a common expression or phrase, it is valid.
+- If Wiktionary data is missing or weak, use your own English knowledge.
+- If the input is unnatural but clearly intended, explain the corrected canonical expression.
+- Example: "pinch penny" should become "pinch pennies".
+- Example: "awash with" is valid.
+- Example: "come out" is valid.
 
-        Return this exact JSON structure:
+Return this exact JSON structure:
 
-        {{
-        "valid": true,
-        "vocabulary": "{vocabulary}",
-        "definition": "대표 한국어 뜻",
-        "entries": [
-            {{
-            "part_of_speech": "Expression",
-            "korean_meaning": "한국어 뜻",
-            "definitions": [
-                "Short English definition"
-            ]
-            }}
-        ],
-        "sentence": "Natural English example sentence",
-        "pronunciation": "IPA pronunciation if useful, otherwise empty string",
-        "synonyms": ["synonym1", "synonym2"],
-        "antonyms": ["antonym1", "antonym2"],
-        "examples": [
-            "Useful English example 1",
-            "Useful English example 2"
-        ],
-        "etymology_summary": "어원이 유용하면 한국어로 짧게, 아니면 빈 문자열",
-        "usage_note": "이 표현은 ... 뉘앙스로 쓰입니다.\\n\\n💬 실제 대화\\n\\nA: English sentence\\nB: English sentence\\n\\n📝 글쓰기 예문\\n\\nFormal writing example sentence 1.\\n\\nFormal writing example sentence 2."
-        }}
+{{
+  "valid": true,
+  "vocabulary": "{vocabulary}",
+  "definition": "대표 한국어 뜻",
+  "entries": [
+    {{
+      "part_of_speech": "Expression",
+      "korean_meaning": "한국어 뜻",
+      "definitions": [
+        "Short English definition"
+      ]
+    }}
+  ],
+  "sentence": "Natural English example sentence",
+  "pronunciation": "IPA pronunciation if useful, otherwise empty string",
+  "synonyms": [
+    "synonym1",
+    "synonym2",
+    "synonym3"
+  ],
+  "antonyms": [
+    "antonym1",
+    "antonym2"
+  ],
+  "examples": [
+    "Useful English example 1",
+    "Useful English example 2"
+  ],
+  "etymology_summary": "어원이 유용하면 한국어로 짧게, 아니면 빈 문자열",
+  "usage_note": "이 표현은 ... 뉘앙스로 쓰입니다.\\n\\n💬 실제 대화\\n\\nA: English sentence\\nB: English sentence\\n\\n📝 글쓰기 예문\\n\\nFormal writing example sentence 1.\\n\\nFormal writing example sentence 2."
+}}
 
-        Rules:
-        - valid must be true if the input can be understood as a useful English word, phrase, idiom, or expression.
-        - definition must be Korean.
-        - korean_meaning must be Korean.
-        - definitions must be English.
-        - usage_note explanation must be Korean.
+Rules:
+- valid must be true if the input can be understood as a useful English word, phrase, idiom, or expression.
+- definition must be Korean.
+- korean_meaning must be Korean.
+- definitions must be English.
+- usage_note explanation must be Korean.
 
-        - Do NOT simply copy Wiktionary's synonyms or antonyms.
-        - If Wiktionary synonyms are empty, generate useful synonyms yourself.
-        - synonyms must contain 3 to 6 useful English synonyms whenever possible.
-        - antonyms must contain 1 to 4 useful English antonyms whenever possible.
-        - Near-synonyms are acceptable if exact synonyms are limited.
-        - Only return an empty synonyms list if the word is a proper noun or genuinely has no meaningful synonym.
-        - Only return an empty antonyms list if no natural opposite exists.
+- Do NOT simply copy Wiktionary's synonyms or antonyms.
+- If Wiktionary synonyms are empty, generate useful synonyms yourself.
+- synonyms must contain 3 to 6 useful English synonyms whenever possible.
+- antonyms must contain 1 to 4 useful English antonyms whenever possible.
+- Near-synonyms are acceptable if exact synonyms are limited.
+- Only return an empty synonyms list if the word is a proper noun or genuinely has no meaningful synonym.
+- Only return an empty antonyms list if no natural opposite exists.
 
-        - A and B conversation lines must be English only.
-        - Do not use Korean in A or B lines.
-        - usage_note must contain line breaks.
-        - Do not include wiki markup like {{}}, [[]], <ref>, or CSS.
-        - Keep everything concise.
-        - usage_note must include exactly ONE short real-life conversation.
-        - usage_note must include exactly TWO formal writing example sentences.
-        - Formal writing examples must be English only.
-        - Do not create a second conversation.
+- A and B conversation lines must be English only.
+- Do not use Korean in A or B lines.
+- usage_note must contain line breaks.
+- Do not include wiki markup like {{}}, [[]], <ref>, or CSS.
+- Keep everything concise.
+- usage_note must include exactly ONE short real-life conversation.
+- usage_note must include exactly TWO formal writing example sentences.
+- Formal writing examples must be English only.
+- Do not create a second conversation.
 
-        Wiktionary data:
-        {wiktionary_context}
-        """
+Wiktionary data:
+{wiktionary_context}
+"""
 
     try:
         response = client.chat.completions.create(
             model="gpt-4o-mini",
-            response_format={"type": "json_object"},
+            response_format={
+                "type": "json_object",
+            },
             messages=[
-                {"role": "system", "content": "Return valid JSON only."},
-                {"role": "user", "content": prompt}
+                {
+                    "role": "system",
+                    "content": "Return valid JSON only.",
+                },
+                {
+                    "role": "user",
+                    "content": prompt,
+                },
             ],
-            temperature=0.2
+            temperature=0.2,
         )
 
         content = response.choices[0].message.content.strip()
         result = json.loads(content)
 
     except Exception as e:
-        print("OPENAI WORD GENERATION ERROR:", repr(e))
-        return {"valid": False}
+        print(
+            "OPENAI WORD GENERATION ERROR:",
+            repr(e),
+        )
+
+        return {
+            "valid": False,
+        }
 
     if not result.get("valid"):
-        return {"valid": False}
+        return {
+            "valid": False,
+        }
 
     result["raw_wiktionary"] = wiktionary_data
     result["corrected_from"] = corrected_from
 
-    if correction_korean_meaning and not result.get("definition"):
+    if (
+        correction_korean_meaning
+        and not result.get("definition")
+    ):
         result["definition"] = correction_korean_meaning
 
     return result
@@ -157,77 +193,77 @@ async def generate_word_info(vocabulary: str) -> dict:
 
 def ask_openai(question: str) -> str:
     system_prompt = """
-        너는 한국인 영어 학습자를 위한 영어 선생님이다.
+너는 한국인 영어 학습자를 위한 영어 선생님이다.
 
-        가장 중요한 규칙
+가장 중요한 규칙
 
-        1.
-        사용자가 영어 문장을 입력했다고 해서 자동으로 문장 분석하지 않는다.
+1.
+사용자가 영어 문장을 입력했다고 해서 자동으로 문장 분석하지 않는다.
 
-        2.
-        문장 분석은 사용자가
-        - 문장 분석
-        - 문법 분석
-        - 구조 분석
-        - 해석하면서 분석
-        등을 요청한 경우에만 한다.
+2.
+문장 분석은 사용자가
+- 문장 분석
+- 문법 분석
+- 구조 분석
+- 해석하면서 분석
+등을 요청한 경우에만 한다.
 
-        3.
-        그 외에는 질문에 직접 답한다.
+3.
+그 외에는 질문에 직접 답한다.
 
-        예시
+예시
 
-        Q.
-        Although I was tired, I finished my homework before going to bed.
-        이거 내가 전에 물어본 적 있나?
+Q.
+Although I was tired, I finished my homework before going to bed.
+이거 내가 전에 물어본 적 있나?
 
-        A.
-        나는 이전 대화를 기억하지 못한다.
-        문장 자체는 자연스러운 표현이다.
+A.
+나는 이전 대화를 기억하지 못한다.
+문장 자체는 자연스러운 표현이다.
 
-        Q.
-        remote와 remote controller 차이가 뭐야?
+Q.
+remote와 remote controller 차이가 뭐야?
 
-        A.
-        두 표현의 차이를 설명한다.
+A.
+두 표현의 차이를 설명한다.
 
-        Q.
-        What's the difference between say and tell?
+Q.
+What's the difference between say and tell?
 
-        A.
-        차이를 설명한다.
+A.
+차이를 설명한다.
 
-        Q.
-        How do you use "although"?
+Q.
+How do you use "although"?
 
-        A.
-        접속사 although 사용법을 설명한다.
+A.
+접속사 although 사용법을 설명한다.
 
-        답변은 항상 한국어로 설명하되,
-        필요한 경우 영어 예문을 함께 제공한다.
+답변은 항상 한국어로 설명하되,
+필요한 경우 영어 예문을 함께 제공한다.
 
-        절대로 사용자가 요청하지 않았는데
+절대로 사용자가 요청하지 않았는데
 
-        1. 전체 뜻
-        2. 문장 구조
-        3. 들어간 문법
-        4. 핵심 표현
-        5. 예문
+1. 전체 뜻
+2. 문장 구조
+3. 들어간 문법
+4. 핵심 표현
+5. 예문
 
-        형식으로 답하지 않는다.
-        """
+형식으로 답하지 않는다.
+"""
 
     response = client.chat.completions.create(
         model="gpt-4o-mini",
         messages=[
             {
                 "role": "system",
-                "content": system_prompt
+                "content": system_prompt,
             },
             {
                 "role": "user",
-                "content": question
-            }
+                "content": question,
+            },
         ],
         temperature=0.2,
     )
@@ -235,67 +271,82 @@ def ask_openai(question: str) -> str:
     return response.choices[0].message.content
 
 
-def extract_word_candidate(question: str, answer: str) -> dict | None:
+def extract_word_candidate(
+    question: str,
+    answer: str,
+) -> dict | None:
     prompt = f"""
-        You are an expert English teacher for Korean learners.
+You are an expert English teacher for Korean learners.
 
-        From the user's question and answer, extract ONE useful English word or phrase worth saving.
+From the user's question and answer,
+extract ONE useful English word or phrase worth saving.
 
-        Return ONLY valid JSON.
+Return ONLY valid JSON.
 
-        If there is no useful word, return:
-        {{
-        "has_candidate": false
-        }}
+If there is no useful word, return:
 
-        If there is a useful word, return:
-        {{
-        "has_candidate": true,
-        "vocabulary": "English word or phrase",
-        "definition": "Natural Korean meaning",
-        "sentence": "Natural English example sentence",
-        "synonyms": "synonym1, synonym2, synonym3",
-        "usage_note": "이 표현은 ... 뉘앙스로 쓰입니다.\\n\\n💬 실제 대화\\n\\nA: English sentence\\nB: English sentence\\n\\n📝 글쓰기 예문\\n\\nFormal writing example sentence 1.\\n\\nFormal writing example sentence 2."
-        }}
+{{
+  "has_candidate": false
+}}
 
-        Rules:
-        - vocabulary must be English.
-        - vocabulary can be a word, idiom, phrasal verb, collocation, or useful expression.
-        - definition must be Korean.
-        - sentence must be English.
-        - usage_note explanation must be Korean.
-        - A and B conversation lines must be English only.
-        - usage_note must include exactly ONE short real-life conversation.
-        - usage_note must include exactly TWO formal writing example sentences.
-        - Formal writing examples must be English only.
-        - Do not create a second conversation.
+If there is a useful word, return:
 
-        Question: {question}
+{{
+  "has_candidate": true,
+  "vocabulary": "English word or phrase",
+  "definition": "Natural Korean meaning",
+  "sentence": "Natural English example sentence",
+  "synonyms": "synonym1, synonym2, synonym3",
+  "usage_note": "이 표현은 ... 뉘앙스로 쓰입니다.\\n\\n💬 실제 대화\\n\\nA: English sentence\\nB: English sentence\\n\\n📝 글쓰기 예문\\n\\nFormal writing example sentence 1.\\n\\nFormal writing example sentence 2."
+}}
 
-        Answer: {answer}
-        """
+Rules:
+- vocabulary must be English.
+- vocabulary can be a word, idiom, phrasal verb, collocation, or useful expression.
+- definition must be Korean.
+- sentence must be English.
+- usage_note explanation must be Korean.
+- A and B conversation lines must be English only.
+- usage_note must include exactly ONE short real-life conversation.
+- usage_note must include exactly TWO formal writing example sentences.
+- Formal writing examples must be English only.
+- Do not create a second conversation.
+
+Question:
+{question}
+
+Answer:
+{answer}
+"""
 
     try:
         response = client.chat.completions.create(
             model="gpt-4o-mini",
-            response_format={"type": "json_object"},
+            response_format={
+                "type": "json_object",
+            },
             messages=[
                 {
                     "role": "system",
-                    "content": "Return valid JSON only."
+                    "content": "Return valid JSON only.",
                 },
                 {
                     "role": "user",
-                    "content": prompt
-                }
+                    "content": prompt,
+                },
             ],
-            temperature=0.2
+            temperature=0.2,
         )
 
-        result = json.loads(response.choices[0].message.content.strip())
+        content = response.choices[0].message.content.strip()
+        result = json.loads(content)
 
     except Exception as e:
-        print("OPENAI EXTRACT WORD ERROR:", repr(e))
+        print(
+            "OPENAI EXTRACT WORD ERROR:",
+            repr(e),
+        )
+
         return None
 
     if not result.get("has_candidate"):
@@ -306,57 +357,71 @@ def extract_word_candidate(question: str, answer: str) -> dict | None:
 
 def correct_word_candidate(vocabulary: str) -> dict:
     prompt = f"""
-        You are an English vocabulary and phrase normalization assistant.
+You are an English vocabulary and phrase normalization assistant.
 
-        Return ONLY valid JSON.
+Return ONLY valid JSON.
 
-        Input: {vocabulary}
+Input:
+{vocabulary}
 
-        Your job:
-        - Accept single words, idioms, phrasal verbs, collocations, and useful expressions.
-        - If the input is slightly unnatural or grammatically wrong, convert it to the natural standard form.
-        - Do not reject useful English expressions just because they are more than one word.
+Your job:
+- Accept single words, idioms, phrasal verbs, collocations, and useful expressions.
+- If the input is slightly unnatural or grammatically wrong, convert it to the natural standard form.
+- Do not reject useful English expressions just because they are more than one word.
 
-        Examples:
-        - pinch penny -> pinch pennies
-        - awash with -> awash with
-        - come out -> come out
-        - This is it -> this is it
-        - head check -> head check
-        - shoulder check -> shoulder check
+Examples:
+- pinch penny -> pinch pennies
+- awash with -> awash with
+- come out -> come out
+- This is it -> this is it
+- head check -> head check
+- shoulder check -> shoulder check
 
-        If the input is a useful English word or expression:
+If the input is a useful English word or expression:
 
-        {{
-        "found": true,
-        "correct_word": "standard word or expression",
-        "korean_meaning": "짧은 한국어 뜻"
-        }}
+{{
+  "found": true,
+  "correct_word": "standard word or expression",
+  "korean_meaning": "짧은 한국어 뜻"
+}}
 
-        If you cannot understand it as English at all:
+If you cannot understand it as English at all:
 
-        {{
-        "found": false,
-        "correct_word": "",
-        "korean_meaning": ""
-        }}
-        """
+{{
+  "found": false,
+  "correct_word": "",
+  "korean_meaning": ""
+}}
+"""
 
     try:
         response = client.chat.completions.create(
             model="gpt-4o-mini",
-            response_format={"type": "json_object"},
+            response_format={
+                "type": "json_object",
+            },
             messages=[
-                {"role": "system", "content": "Return JSON only."},
-                {"role": "user", "content": prompt},
+                {
+                    "role": "system",
+                    "content": "Return JSON only.",
+                },
+                {
+                    "role": "user",
+                    "content": prompt,
+                },
             ],
             temperature=0.1,
         )
 
-        return json.loads(response.choices[0].message.content)
+        content = response.choices[0].message.content
+        return json.loads(content)
 
     except Exception as e:
-        print("SPELL CORRECTION ERROR:", repr(e))
+        print(
+            "SPELL CORRECTION ERROR:",
+            repr(e),
+        )
+
         return {
             "found": False,
             "correct_word": "",
@@ -364,71 +429,98 @@ def correct_word_candidate(vocabulary: str) -> dict:
         }
 
 
-
 def _safe_json_loads(content: str):
     try:
         return json.loads(content)
+
     except json.JSONDecodeError:
         print("JSON PARSE FAILED RAW CONTENT:")
         print(content)
 
-        # ```json ... ``` 제거 대응
         cleaned = content.strip()
-        cleaned = re.sub(r"^```json\s*", "", cleaned)
-        cleaned = re.sub(r"^```\s*", "", cleaned)
-        cleaned = re.sub(r"\s*```$", "", cleaned)
+
+        cleaned = re.sub(
+            r"^```json\s*",
+            "",
+            cleaned,
+        )
+
+        cleaned = re.sub(
+            r"^```\s*",
+            "",
+            cleaned,
+        )
+
+        cleaned = re.sub(
+            r"\s*```$",
+            "",
+            cleaned,
+        )
 
         try:
             return json.loads(cleaned)
+
         except json.JSONDecodeError:
-            # 본문 중 첫 { ... } 만 추출
-            match = re.search(r"\{.*\}", cleaned, re.DOTALL)
+            match = re.search(
+                r"\{.*\}",
+                cleaned,
+                re.DOTALL,
+            )
+
             if match:
-                return json.loads(match.group(0))
+                return json.loads(
+                    match.group(0)
+                )
 
             raise
 
-def generate_writing_challenge(required_words: list[str]) -> dict:
+
+def generate_writing_challenge(
+    required_words: list[str],
+) -> dict:
     words_text = ", ".join(required_words)
 
     prompt = f"""
-    You are an English writing coach for a Korean learner.
+You are an English writing coach for a Korean learner.
 
-    Create ONE practical writing challenge.
-    The learner must use ALL required words naturally.
+Create ONE practical writing challenge.
+The learner must use ALL required words naturally.
 
-    Required words:
-    {words_text}
+Required words:
+{words_text}
 
-    Rules:
-    - Topic should be easy enough for daily writing.
-    - Topic should naturally encourage the required words.
-    - Korean instruction should be friendly and clear.
-    - Return JSON only.
+Rules:
+- Topic should be easy enough for daily writing.
+- Topic should naturally encourage the required words.
+- Korean instruction should be friendly and clear.
+- Return JSON only.
 
-    JSON format:
-    {{
-      "topic": "Describe a situation where you had to save money while dealing with many people.",
-      "required_words": {required_words},
-      "recommended_grammar": "past tense",
-      "target_words": "80-120 words",
-      "instruction_ko": "아래 필수 단어를 모두 사용해서 80~120단어 영어 글을 작성해보세요."
-    }}
-    """
+JSON format:
+
+{{
+  "topic": "Describe a situation where you had to save money while dealing with many people.",
+  "required_words": {required_words},
+  "recommended_grammar": "past tense",
+  "target_words": "80-120 words",
+  "instruction_ko": "아래 필수 단어를 모두 사용해서 80~120단어 영어 글을 작성해보세요."
+}}
+"""
 
     response = client.chat.completions.create(
         model="gpt-4o-mini",
         messages=[
             {
                 "role": "system",
-                "content": "Return valid JSON only."
+                "content": "Return valid JSON only.",
             },
             {
                 "role": "user",
-                "content": prompt
-            }
+                "content": prompt,
+            },
         ],
-        response_format={"type": "json_object"},
+        response_format={
+            "type": "json_object",
+        },
         temperature=0.2,
     )
 
@@ -450,68 +542,81 @@ def correct_writing_challenge(
     words_text = ", ".join(required_words)
 
     prompt = f"""
-        You are an English writing coach for a Korean learner.
+You are an English writing coach for a Korean learner.
 
-        Topic:
-        {topic}
+Topic:
+{topic}
 
-        Required words:
-        {words_text}
+Required words:
+{words_text}
 
-        User writing:
-        {original_text}
+User writing:
+{original_text}
 
-        Your job:
-        1. Correct grammar.
-        2. Rewrite it naturally.
-        3. Check ONLY the required words for used_words and missing_words.
-        4. Do NOT count normal words like I, am, my, name as used words unless they are required words.
-        5. Explain mistakes in Korean.
-        6. Extract grammar mistake tags.
+Your job:
+1. Correct grammar.
+2. Rewrite it naturally.
+3. Check ONLY the required words for used_words and missing_words.
+4. Do NOT count normal words like I, am, my, name as used words unless they are required words.
+5. Explain mistakes in Korean.
+6. Extract grammar mistake tags.
 
-        Return JSON only.
+Return JSON only.
 
-        JSON format:
-        {{
-        "overall_score": 85,
-        "grammar_score": 85,
-        "vocab_score": 80,
-        "word_usage_score": 70,
-        "corrected_text": "...",
-        "natural_text": "...",
-        "used_words": ["required word used by user"],
-        "missing_words": ["required word not used by user"],
-        "grammar_tags": ["capitalization", "article", "past_tense"],
-        "feedback": [
-            {{
-            "type": "grammar",
-            "tag": "capitalization",
-            "original": "i am sukwon kim",
-            "corrected": "My name is Sukwon Kim.",
-            "explanation_ko": "문장의 첫 글자와 이름은 대문자로 써야 합니다."
-            }}
-        ],
-        "short_review_ko": "전체적으로 의미는 전달되지만, 문장 시작 대문자와 자기소개 표현을 다듬으면 더 자연스럽습니다."
-        }}
-        """
+JSON format:
+
+{{
+  "overall_score": 85,
+  "grammar_score": 85,
+  "vocab_score": 80,
+  "word_usage_score": 70,
+  "corrected_text": "...",
+  "natural_text": "...",
+  "used_words": [
+    "required word used by user"
+  ],
+  "missing_words": [
+    "required word not used by user"
+  ],
+  "grammar_tags": [
+    "capitalization",
+    "article",
+    "past_tense"
+  ],
+  "feedback": [
+    {{
+      "type": "grammar",
+      "tag": "capitalization",
+      "original": "i am sukwon kim",
+      "corrected": "My name is Sukwon Kim.",
+      "explanation_ko": "문장의 첫 글자와 이름은 대문자로 써야 합니다."
+    }}
+  ],
+  "short_review_ko": "전체적으로 의미는 전달되지만, 문장 시작 대문자와 자기소개 표현을 다듬으면 더 자연스럽습니다."
+}}
+"""
 
     response = client.chat.completions.create(
         model="gpt-4o-mini",
         messages=[
             {
                 "role": "system",
-                "content": "Return valid JSON only."
+                "content": "Return valid JSON only.",
             },
             {
                 "role": "user",
-                "content": prompt
-            }
+                "content": prompt,
+            },
         ],
-        response_format={"type": "json_object"},
+        response_format={
+            "type": "json_object",
+        },
         temperature=0.2,
     )
 
-    return _safe_json_loads(response.choices[0].message.content)
+    content = response.choices[0].message.content
+
+    return _safe_json_loads(content)
 
 
 def analyze_sentence(sentence: str) -> str:
@@ -542,10 +647,250 @@ def analyze_sentence(sentence: str) -> str:
     response = client.chat.completions.create(
         model="gpt-4o-mini",
         messages=[
-            {"role": "system", "content": system_prompt},
-            {"role": "user", "content": sentence},
+            {
+                "role": "system",
+                "content": system_prompt,
+            },
+            {
+                "role": "user",
+                "content": sentence,
+            },
         ],
         temperature=0.2,
     )
 
     return response.choices[0].message.content
+
+
+def generate_daily_paragraph(
+    level: str = "intermediate",
+) -> dict:
+    prompt = f"""
+You are an English reading writer for Korean learners.
+
+Create one engaging daily English reading in a style similar to
+BBC Learning English: clear, practical, interesting, and easy to follow.
+
+Return ONLY valid JSON.
+Do not use markdown.
+
+Learner level:
+{level}
+
+Return this exact JSON structure:
+
+{{
+  "title": "An engaging English title",
+  "english_content": "A natural English reading split into 2 or 3 short paragraphs using \\\\n\\\\n.",
+  "korean_translation": "A natural Korean translation split into matching paragraphs using \\\\n\\\\n.",
+  "focus_words": [
+    "useful word or phrase 1",
+    "useful word or phrase 2",
+    "useful word or phrase 3"
+  ],
+  "level": "{level}"
+}}
+
+Content rules:
+- Write between 100 and 150 English words in total.
+- Split the English reading into 2 or 3 short paragraphs.
+- Insert exactly one blank line between paragraphs using \\n\\n.
+- Split the Korean translation into the same paragraph structure.
+- The title should be specific, interesting, and inviting.
+- Avoid generic textbook titles such as:
+  "The Importance of Time Management",
+  "The Benefits of Exercise",
+  or "The Importance of Communication."
+- Prefer titles such as:
+  "Why Some People Always Finish Early",
+  "The Five-Minute Habit That Changed My Morning",
+  or "What Happens When You Put Your Phone Away?"
+- Begin with a relatable situation, question, observation, or small story.
+- Use natural modern English.
+- Do not make the reading childish.
+- Do not make it sound like a formal essay or school textbook.
+- Keep sentences clear enough for a Korean intermediate learner.
+- Use a mixture of short and medium-length sentences.
+- End with a useful insight, takeaway, or reflection.
+
+Topic rules:
+- Choose one practical or interesting topic.
+- Possible topics include:
+  daily habits, work, technology, travel, relationships,
+  psychology, culture, productivity, learning, health, or communication.
+- Vary the topic from day to day.
+- Do not always write about productivity or self-improvement.
+
+Focus-word rules:
+- Select exactly 3 useful English words, collocations, or short expressions.
+- Every focus word must appear exactly as written in english_content.
+- Prefer expressions that are useful in real conversation or writing.
+- Do not choose overly basic words.
+- Do not choose a long sentence as a focus word.
+- focus_words must contain English only.
+
+Translation rules:
+- korean_translation must be natural Korean.
+- Translate the meaning naturally rather than word-for-word.
+- Preserve the meaning and paragraph order of the English reading.
+
+JSON rules:
+- Return JSON only.
+- Do not add explanations outside the JSON.
+- Do not use markdown code fences.
+"""
+
+    try:
+        response = client.chat.completions.create(
+            model="gpt-4o-mini",
+            response_format={
+                "type": "json_object",
+            },
+            messages=[
+                {
+                    "role": "system",
+                    "content": (
+                        "You create engaging English readings "
+                        "for Korean learners. "
+                        "Return valid JSON only."
+                    ),
+                },
+                {
+                    "role": "user",
+                    "content": prompt,
+                },
+            ],
+            temperature=0.7,
+        )
+
+        content = response.choices[0].message.content.strip()
+        result = json.loads(content)
+
+    except Exception as e:
+        print(
+            "DAILY PARAGRAPH GENERATION ERROR:",
+            repr(e),
+        )
+
+        return {}
+
+    title = str(
+        result.get("title", "")
+    ).strip()
+
+    english_content = str(
+        result.get("english_content", "")
+    ).strip()
+
+    korean_translation = str(
+        result.get("korean_translation", "")
+    ).strip()
+
+    focus_words = result.get(
+        "focus_words",
+        [],
+    )
+
+    if not isinstance(focus_words, list):
+        focus_words = []
+
+    cleaned_focus_words = [
+        str(word).strip()
+        for word in focus_words
+        if str(word).strip()
+    ][:3]
+
+    if (
+        not title
+        or not english_content
+        or not korean_translation
+        or len(cleaned_focus_words) != 3
+    ):
+        print(
+            "DAILY PARAGRAPH INVALID RESULT:",
+            {
+                "title": title,
+                "english_content": english_content,
+                "focus_words": cleaned_focus_words,
+            },
+        )
+
+        return {}
+
+    return {
+        "title": title,
+        "english_content": english_content,
+        "korean_translation": korean_translation,
+        "focus_words": cleaned_focus_words,
+        "level": (
+            str(
+                result.get(
+                    "level",
+                    level,
+                )
+            ).strip()
+            or level
+        ),
+    }
+
+
+def ask_daily_paragraph(
+    english_content: str,
+    question: str,
+) -> str:
+    prompt = f"""
+너는 한국인 영어 학습자를 위한 영어 읽기 선생님이다.
+
+아래 영어 문단만을 기준으로 사용자의 질문에 답해라.
+
+영어 문단:
+{english_content}
+
+사용자 질문:
+{question}
+
+규칙:
+- 답변은 한국어로 쉽게 설명한다.
+- 필요한 경우 영어 표현이나 문장을 인용해서 설명한다.
+- 문단에 없는 내용을 사실처럼 지어내지 않는다.
+- 질문이 단어 뜻이면 문단 속 의미와 뉘앙스를 설명한다.
+- 질문이 문법이면 해당 문장을 중심으로 설명한다.
+- 질문이 내용 이해 질문이면 문단의 근거를 들어 답한다.
+- 답변은 너무 길지 않게 작성한다.
+"""
+
+    try:
+        response = client.chat.completions.create(
+            model="gpt-4o-mini",
+            messages=[
+                {
+                    "role": "system",
+                    "content": (
+                        "You are an English reading tutor "
+                        "for Korean learners. "
+                        "Answer based only on the provided paragraph."
+                    ),
+                },
+                {
+                    "role": "user",
+                    "content": prompt,
+                },
+            ],
+            temperature=0.2,
+        )
+
+        return (
+            response
+            .choices[0]
+            .message
+            .content
+            .strip()
+        )
+
+    except Exception as e:
+        print(
+            "DAILY PARAGRAPH QUESTION ERROR:",
+            repr(e),
+        )
+
+        return "질문에 답변을 생성하는 중 오류가 발생했습니다."

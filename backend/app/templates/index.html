@@ -11,6 +11,127 @@
     <a href="/quiz" class="primary-action">퀴즈 시작</a>
 </div>
 
+
+{% if today_paragraph %}
+<div class="panel-card daily-reading-card" style="margin-bottom: 24px;">
+
+    <div class="panel-header">
+        <h2>📖 오늘의 영어 문단</h2>
+        <span>{{ today_paragraph.level }}</span>
+    </div>
+
+    <h3 style="margin-bottom: 14px;">
+        {{ today_paragraph.title }}
+    </h3>
+
+    <div style="margin-bottom: 16px;">
+        <button
+            id="daily-reading-play-button"
+            type="button"
+            class="word-tag"
+            style="
+                border: none;
+                cursor: pointer;
+                padding: 10px 16px;
+                font-size: 14px;
+            "
+            onclick="toggleDailyParagraphSpeech()"
+        >
+            🔊 Read Aloud
+        </button>
+
+        <button
+            id="daily-reading-stop-button"
+            type="button"
+            class="word-tag danger-tag"
+            style="
+                border: none;
+                cursor: pointer;
+                padding: 10px 16px;
+                font-size: 14px;
+                margin-left: 8px;
+                display: none;
+            "
+            onclick="stopDailyParagraphSpeech()"
+        >
+            ⏹ Stop
+        </button>
+    </div>
+
+    <div
+        id="daily-reading-text"
+        class="daily-reading-en"
+        style="
+            line-height: 2;
+            font-size: 16px;
+            max-width: 1100px;
+            white-space: pre-wrap;
+        "
+    >
+        {{ today_paragraph.highlighted_english_content|safe }}
+    </div>
+
+    <details style="margin-top: 22px;">
+        <summary
+            style="
+                cursor: pointer;
+                color: #a5b4fc;
+                font-weight: 700;
+            "
+        >
+            🇰🇷 한국어 번역 보기
+        </summary>
+
+        <p
+            class="empty-text"
+            style="
+                line-height: 1.9;
+                margin-top: 14px;
+                max-width: 1100px;
+                white-space: pre-wrap;
+            "
+        >
+            {{ today_paragraph.korean_translation }}
+        </p>
+    </details>
+
+    {% if today_paragraph.focus_words %}
+    <div style="margin-top: 26px;">
+        <h3 style="margin-bottom: 12px;">오늘의 단어</h3>
+
+        <div class="tag-wrap" style="gap: 12px;">
+            {% for word in today_paragraph.focus_words.split(",") %}
+                {% if word.strip() %}
+                <form method="post" action="/search" style="display: inline;">
+                    <input
+                        type="hidden"
+                        name="query"
+                        value="{{ word.strip() }}"
+                    >
+
+                    <button
+                        type="submit"
+                        class="word-tag"
+                        style="
+                            border: none;
+                            cursor: pointer;
+                            padding: 12px 18px;
+                            font-size: 15px;
+                        "
+                    >
+                        🔎 {{ word.strip() }}
+                    </button>
+                </form>
+                {% endif %}
+            {% endfor %}
+        </div>
+    </div>
+    {% endif %}
+
+</div>
+{% endif %}
+
+
 <div class="metric-grid">
     <div class="metric-card gradient-blue">
         <span class="metric-label">저장된 단어</span>
@@ -37,6 +158,7 @@
     </div>
 </div>
 
+
 <div class="dashboard-grid">
     <div class="panel-card">
         <div class="panel-header">
@@ -49,8 +171,12 @@
                 <div class="word-row">
                     <div>
                         <strong>{{ word.vocabulary }}</strong>
-                        <p>오답 {{ word.priority }}회 · 정답 {{ word.memorize_count }}회</p>
+                        <p>
+                            오답 {{ word.priority }}회 ·
+                            정답 {{ word.memorize_count }}회
+                        </p>
                     </div>
+
                     <span class="badge danger">Review</span>
                 </div>
             {% endfor %}
@@ -72,6 +198,7 @@
                         <strong>{{ word.vocabulary }}</strong>
                         <p>{{ word.definition }}</p>
                     </div>
+
                     <span class="badge">New</span>
                 </div>
             {% endfor %}
@@ -80,5 +207,209 @@
         {% endif %}
     </div>
 </div>
+
+
+<form
+    id="highlight-search-form"
+    method="post"
+    action="/search"
+    style="display: none;"
+>
+    <input
+        id="highlight-search-query"
+        type="hidden"
+        name="query"
+        value=""
+    >
+</form>
+
+
+<script>
+let dailyParagraphUtterance = null;
+let isDailyParagraphSpeaking = false;
+
+
+function updateDailySpeechButtons(isSpeaking) {
+    const playButton = document.getElementById(
+        "daily-reading-play-button"
+    );
+
+    const stopButton = document.getElementById(
+        "daily-reading-stop-button"
+    );
+
+    if (playButton) {
+        playButton.innerText = isSpeaking
+            ? "⏸ Pause"
+            : "🔊 Read Aloud";
+    }
+
+    if (stopButton) {
+        stopButton.style.display = isSpeaking
+            ? "inline-block"
+            : "none";
+    }
+}
+
+
+function getPreferredEnglishVoice() {
+    const voices = window.speechSynthesis.getVoices();
+
+    return (
+        voices.find(
+            voice =>
+                voice.lang === "en-US" &&
+                voice.name.toLowerCase().includes("samantha")
+        )
+        ||
+        voices.find(
+            voice => voice.lang === "en-US"
+        )
+        ||
+        voices.find(
+            voice => voice.lang.startsWith("en")
+        )
+        ||
+        null
+    );
+}
+
+
+function startDailyParagraphSpeech() {
+    const textElement = document.getElementById(
+        "daily-reading-text"
+    );
+
+    if (!textElement) {
+        return;
+    }
+
+    const text = textElement.innerText.trim();
+
+    if (!text) {
+        return;
+    }
+
+    window.speechSynthesis.cancel();
+
+    dailyParagraphUtterance = new SpeechSynthesisUtterance(text);
+    dailyParagraphUtterance.lang = "en-US";
+    dailyParagraphUtterance.rate = 0.9;
+    dailyParagraphUtterance.pitch = 1;
+
+    const preferredVoice = getPreferredEnglishVoice();
+
+    if (preferredVoice) {
+        dailyParagraphUtterance.voice = preferredVoice;
+    }
+
+    dailyParagraphUtterance.onstart = function () {
+        isDailyParagraphSpeaking = true;
+        updateDailySpeechButtons(true);
+    };
+
+    dailyParagraphUtterance.onend = function () {
+        isDailyParagraphSpeaking = false;
+        dailyParagraphUtterance = null;
+        updateDailySpeechButtons(false);
+    };
+
+    dailyParagraphUtterance.onerror = function () {
+        isDailyParagraphSpeaking = false;
+        dailyParagraphUtterance = null;
+        updateDailySpeechButtons(false);
+    };
+
+    window.speechSynthesis.speak(dailyParagraphUtterance);
+}
+
+
+function toggleDailyParagraphSpeech() {
+    if (!("speechSynthesis" in window)) {
+        alert("이 브라우저는 음성 읽기를 지원하지 않습니다.");
+        return;
+    }
+
+    if (window.speechSynthesis.paused) {
+        window.speechSynthesis.resume();
+        isDailyParagraphSpeaking = true;
+        updateDailySpeechButtons(true);
+        return;
+    }
+
+    if (window.speechSynthesis.speaking) {
+        window.speechSynthesis.pause();
+        isDailyParagraphSpeaking = false;
+
+        const playButton = document.getElementById(
+            "daily-reading-play-button"
+        );
+
+        if (playButton) {
+            playButton.innerText = "▶ Resume";
+        }
+
+        return;
+    }
+
+    startDailyParagraphSpeech();
+}
+
+
+function stopDailyParagraphSpeech() {
+    if (!("speechSynthesis" in window)) {
+        return;
+    }
+
+    window.speechSynthesis.cancel();
+
+    isDailyParagraphSpeaking = false;
+    dailyParagraphUtterance = null;
+
+    updateDailySpeechButtons(false);
+}
+
+
+document.addEventListener("click", function (event) {
+    const target = event.target.closest(".reading-highlight");
+
+    if (!target) {
+        return;
+    }
+
+    event.preventDefault();
+
+    const word = target.dataset.searchWord;
+    const input = document.getElementById(
+        "highlight-search-query"
+    );
+    const form = document.getElementById(
+        "highlight-search-form"
+    );
+
+    if (!word || !input || !form) {
+        return;
+    }
+
+    stopDailyParagraphSpeech();
+
+    input.value = word;
+    form.submit();
+});
+
+
+window.addEventListener("beforeunload", function () {
+    if ("speechSynthesis" in window) {
+        window.speechSynthesis.cancel();
+    }
+});
+
+
+if ("speechSynthesis" in window) {
+    window.speechSynthesis.onvoiceschanged = function () {
+        window.speechSynthesis.getVoices();
+    };
+}
+</script>
 
 {% endblock %}

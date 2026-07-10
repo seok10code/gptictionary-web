@@ -1079,3 +1079,18 @@ button:hover {
         overflow-x: hidden;
     }
 }
+
+
+.reading-highlight {
+    color: #93c5fd;
+    background: rgba(59, 130, 246, 0.16);
+    padding: 2px 6px;
+    border-radius: 8px;
+    font-weight: 700;
+    text-decoration: none;
+    cursor: pointer;
+}
+
+.reading-highlight:hover {
+    background: rgba(59, 130, 246, 0.28);
+}

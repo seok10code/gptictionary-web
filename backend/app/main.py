@@ -20,7 +20,7 @@ from backend.app.api.routes import writing
 
 from backend.app.db.database import get_db
 from backend.app.services.stats_service import get_dashboard_data
-
+from backend.app.services.daily_paragraph_service import get_or_create_today_paragraph
 
 
 
@@ -99,5 +99,6 @@ def home(
         context={
             "request": request,
             "dashboard": get_dashboard_data(db),
+            "today_paragraph": get_or_create_today_paragraph(db),
         },
     )
