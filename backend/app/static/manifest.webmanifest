@@ -1,0 +1,19 @@
+{
+  "name": "GPTictionary Flashcards",
+  "short_name": "Flashcards",
+  "description": "GPTictionary ambient English flashcards",
+  "start_url": "/flashcards",
+  "scope": "/",
+  "display": "standalone",
+  "orientation": "landscape",
+  "background_color": "#0d0f14",
+  "theme_color": "#0d0f14",
+  "icons": [
+    {
+      "src": "/static/favicon.png",
+      "sizes": "192x192",
+      "type": "image/png",
+      "purpose": "any"
+    }
+  ]
+}
