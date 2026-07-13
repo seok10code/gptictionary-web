@@ -17,26 +17,21 @@ let settings = loadSettings();
 let currentIndex = 0;
 let isPlaying = true;
 let audioUnlocked = false;
-let sequenceToken = 0;
-
-let timers = [];
-let countdownTimer = null;
+let cycleId = 0;
 let controlsTimer = null;
-
-
-
+let countdownTimer = null;
 let wakeLock = null;
 
-const audioPlayer = new Audio();
+const audioCache = new Map();
 
+const audioPlayer = new Audio();
 audioPlayer.preload = "auto";
 audioPlayer.playsInline = true;
 audioPlayer.volume = 1;
 
 let currentAudioUrl = null;
-let currentAudioFinish = null;
+let currentAudioResolver = null;
 
-const audioCache = new Map();
 
 const page = document.getElementById("flashcards-page");
 const flashcard = document.getElementById("flashcard");
@@ -120,6 +115,13 @@ function getCurrentWord() {
 }
 
 
+function sleep(ms) {
+    return new Promise((resolve) => {
+        window.setTimeout(resolve, ms);
+    });
+}
+
+
 function normalizeSynonyms(value) {
     return (value || "")
         .split(",")
@@ -149,21 +151,26 @@ function formatUsageNote(text) {
 }
 
 
-function setStageVisible(element, visible) {
-    if (!element || element.hidden) {
-        return;
-    }
+/*
+카드가 뜨자마자 모든 정보를 표시한다.
+더 이상 Example을 몇 초 뒤에 보여주지 않는다.
+*/
+function showAllSections() {
+    const sections = [
+        answerBlock,
+        exampleSection,
+        synonymsSection,
+        usageSection,
+    ];
 
-    element.classList.toggle("stage-hidden", !visible);
-    element.classList.toggle("stage-visible", visible);
-}
+    sections.forEach((element) => {
+        if (!element || element.hidden) {
+            return;
+        }
 
-
-function resetStages() {
-    setStageVisible(answerBlock, false);
-    setStageVisible(exampleSection, false);
-    setStageVisible(synonymsSection, false);
-    setStageVisible(usageSection, false);
+        element.classList.remove("stage-hidden");
+        element.classList.add("stage-visible");
+    });
 }
 
 
@@ -218,94 +225,24 @@ function renderCurrentWord() {
     document.title =
         `${vocabulary} · GPTictionary`;
 
-    resetStages();
-}
-
-
-function clearTimers() {
-    timers.forEach((timerId) => {
-        window.clearTimeout(timerId);
-    });
-
-    timers = [];
-
-    if (countdownTimer !== null) {
-        window.clearInterval(countdownTimer);
-        countdownTimer = null;
-    }
-}
-
-
-function schedule(callback, delay) {
-    const token = sequenceToken;
-
-    const timerId = window.setTimeout(() => {
-        if (
-            token !== sequenceToken ||
-            !isPlaying
-        ) {
-            return;
-        }
-
-        callback();
-    }, delay);
-
-    timers.push(timerId);
-}
-
-
-function restartProgress() {
-    progressBar.style.transition = "none";
-    progressBar.style.width = "0%";
-
-    void progressBar.offsetWidth;
-
-    if (!isPlaying) {
-        return;
-    }
-
-    window.requestAnimationFrame(() => {
-        window.requestAnimationFrame(() => {
-            progressBar.style.transition =
-                `width ${settings.duration}s linear`;
-
-            progressBar.style.width = "100%";
-        });
-    });
-}
-
-
-function startCountdown() {
-    let remaining = settings.duration;
-
-    countdown.textContent = `${remaining}s`;
-
-    countdownTimer = window.setInterval(() => {
-        remaining -= 1;
-
-        if (remaining < 0) {
-            remaining = 0;
-        }
-
-        countdown.textContent = `${remaining}s`;
-    }, 1000);
+    showAllSections();
 }
 
 
 function stopCurrentAudio() {
-    const finish = currentAudioFinish;
+    const resolver = currentAudioResolver;
 
-    currentAudioFinish = null;
+    currentAudioResolver = null;
 
     try {
         audioPlayer.pause();
         audioPlayer.currentTime = 0;
     } catch {
-        // 이미 정지된 경우 무시
+        // 이미 정지된 상태면 무시
     }
 
-    if (finish) {
-        finish(false);
+    if (resolver) {
+        resolver(false);
     }
 
     if (currentAudioUrl) {
@@ -319,7 +256,8 @@ async function requestTTSAudio(
     text,
     audioType = "word"
 ) {
-    const cacheKey = `${audioType}:${text}`;
+    const cleanText = (text || "").trim();
+    const cacheKey = `${audioType}:${cleanText}`;
 
     if (audioCache.has(cacheKey)) {
         return audioCache.get(cacheKey);
@@ -334,7 +272,7 @@ async function requestTTSAudio(
                 "Content-Type": "application/json",
             },
             body: JSON.stringify({
-                text,
+                text: cleanText,
                 audio_type: audioType,
             }),
         }
@@ -401,8 +339,8 @@ async function playTTSAudio(
                     handleError
                 );
 
-                if (currentAudioFinish === finish) {
-                    currentAudioFinish = null;
+                if (currentAudioResolver === finish) {
+                    currentAudioResolver = null;
                 }
 
                 resolve(playedNormally);
@@ -421,7 +359,7 @@ async function playTTSAudio(
                 finish(false);
             };
 
-            currentAudioFinish = finish;
+            currentAudioResolver = finish;
 
             audioPlayer.addEventListener(
                 "ended",
@@ -437,63 +375,64 @@ async function playTTSAudio(
 
             audioPlayer.play().catch((error) => {
                 console.error(
-                    "Automatic audio playback failed:",
+                    "Audio playback failed:",
                     error
                 );
 
                 finish(false);
             });
         });
-
     } catch (error) {
-        console.error(
-            "OpenAI TTS error:",
-            error
-        );
-
+        console.error("OpenAI TTS error:", error);
         return false;
     }
 }
 
 
-async function speakSentence(token = sequenceToken) {
+/*
+처음 사용자 조작에서 실제 단어를 재생해
+브라우저의 음성 권한을 활성화한다.
+*/
+async function unlockAudio() {
+    if (audioUnlocked) {
+        return true;
+    }
+
     const currentWord = getCurrentWord();
 
-    if (
-        !currentWord ||
-        !settings.sentenceAudio ||
-        !audioEnabled
-    ) {
-        return;
+    if (!currentWord) {
+        return false;
     }
 
-    const sentence =
-        (currentWord.sentence || "").trim();
+    const word =
+        (currentWord.vocabulary || "").trim();
 
-    if (!sentence || token !== sequenceToken) {
-        return;
+    if (!word) {
+        return false;
     }
 
-    await playTTSAudio(
-        sentence,
-        "sentence"
+    audioUnlocked = true;
+
+    const played = await playTTSAudio(
+        word,
+        "word"
     );
+
+    if (!played) {
+        audioUnlocked = false;
+        return false;
+    }
+
+    return true;
 }
 
-function sleep(ms) {
-    return new Promise((resolve) => {
-        window.setTimeout(resolve, ms);
-    });
-}
 
-
-async function runCardAudioSequence(
-    token,
-    skipWordAudio = false
+async function playCardAudio(
+    expectedCycleId
 ) {
     if (
         !audioUnlocked ||
-        token !== sequenceToken ||
+        expectedCycleId !== cycleId ||
         !isPlaying
     ) {
         return;
@@ -511,47 +450,27 @@ async function runCardAudioSequence(
     const sentence =
         (currentWord.sentence || "").trim();
 
-    /*
-    1. 단어 한 번
-    */
-    if (
-        !skipWordAudio &&
-        settings.wordAudio &&
-        word
-    ) {
+    if (settings.wordAudio && word) {
         await playTTSAudio(word, "word");
     }
 
     if (
-        token !== sequenceToken ||
+        expectedCycleId !== cycleId ||
         !isPlaying
     ) {
         return;
     }
 
-    /*
-    2. 단어와 예문 사이 간격
-    */
-    await new Promise((resolve) => {
-        window.setTimeout(resolve, 800);
-    });
+    await sleep(500);
 
     if (
-        token !== sequenceToken ||
+        expectedCycleId !== cycleId ||
         !isPlaying
     ) {
         return;
     }
 
-    /*
-    3. 예문 표시 및 재생
-    */
-    setStageVisible(exampleSection, true);
-
-    if (
-        settings.sentenceAudio &&
-        sentence
-    ) {
+    if (settings.sentenceAudio && sentence) {
         await playTTSAudio(
             sentence,
             "sentence"
@@ -559,136 +478,165 @@ async function runCardAudioSequence(
     }
 }
 
-function startCardCycle(
-    skipWordAudio = false
-) {
-    clearTimers();
-    stopCurrentAudio();
 
-    sequenceToken += 1;
-
-    const token = sequenceToken;
-
-    renderCurrentWord();
-    restartProgress();
-    startCountdown();
-
-    const totalMs =
-        settings.duration * 1000;
-
-    const answerTime =
-        Math.max(700, totalMs * 0.05);
-
-    const audioStartTime =
-        Math.max(1000, totalMs * 0.08);
-
-    const synonymsTime =
-        Math.max(6000, totalMs * 0.55);
-
-    const usageTime =
-        Math.max(8500, totalMs * 0.72);
-
-    schedule(() => {
-        recallPrompt.style.opacity = "0.4";
-        setStageVisible(answerBlock, true);
-    }, answerTime);
-
-    /*
-    카드당 음성 흐름은 이것 하나만 실행한다.
-    */
-    schedule(() => {
-        runCardAudioSequence(
-            token,
-            skipWordAudio
-        );
-    }, audioStartTime);
-
-    schedule(() => {
-        setStageVisible(synonymsSection, true);
-    }, synonymsTime);
-
-    schedule(() => {
-        setStageVisible(usageSection, true);
-    }, usageTime);
-
-    schedule(() => {
-        if (
-            token !== sequenceToken ||
-            !isPlaying
-        ) {
-            return;
-        }
-
-        showNextCard();
-    }, totalMs);
-}
-
-
-function revealAll() {
-    setStageVisible(answerBlock, true);
-    setStageVisible(exampleSection, true);
-    setStageVisible(synonymsSection, true);
-    setStageVisible(usageSection, true);
-
+function restartProgress() {
     progressBar.style.transition = "none";
     progressBar.style.width = "0%";
 
-    countdown.textContent = "일시정지";
-}
+    void progressBar.offsetWidth;
 
-
-function changeCard(nextIndex) {
-    clearTimers();
-    stopCurrentAudio();
-
-    sequenceToken += 1;
-
-    if (settings.fade) {
-        flashcard.classList.add("is-changing");
-
-        window.setTimeout(() => {
-            currentIndex = nextIndex;
-
-            flashcard.classList.remove(
-                "is-changing"
-            );
-
-            if (isPlaying) {
-                startCardCycle();
-            } else {
-                renderCurrentWord();
-                revealAll();
-            }
-        }, 300);
-
+    if (!isPlaying) {
         return;
     }
 
-    currentIndex = nextIndex;
+    window.requestAnimationFrame(() => {
+        window.requestAnimationFrame(() => {
+            progressBar.style.transition =
+                `width ${settings.duration}s linear`;
 
-    if (isPlaying) {
-        startCardCycle();
+            progressBar.style.width = "100%";
+        });
+    });
+}
+
+
+function startCountdown(expectedCycleId) {
+    if (countdownTimer !== null) {
+        window.clearInterval(countdownTimer);
+    }
+
+    let remaining = settings.duration;
+
+    countdown.textContent = `${remaining}s`;
+
+    countdownTimer = window.setInterval(() => {
+        if (
+            expectedCycleId !== cycleId ||
+            !isPlaying
+        ) {
+            window.clearInterval(countdownTimer);
+            countdownTimer = null;
+            return;
+        }
+
+        remaining -= 1;
+
+        if (remaining < 0) {
+            remaining = 0;
+        }
+
+        countdown.textContent = `${remaining}s`;
+    }, 1000);
+}
+
+
+async function runCardCycle(expectedCycleId) {
+    const startedAt = Date.now();
+
+    renderCurrentWord();
+    restartProgress();
+    startCountdown(expectedCycleId);
+
+    /*
+    화면은 즉시 전부 표시하고,
+    음성만 순차적으로 실행한다.
+    */
+    await playCardAudio(expectedCycleId);
+
+    if (
+        expectedCycleId !== cycleId ||
+        !isPlaying
+    ) {
+        return;
+    }
+
+    const elapsed = Date.now() - startedAt;
+    const totalDuration = settings.duration * 1000;
+    const remaining = Math.max(
+        0,
+        totalDuration - elapsed
+    );
+
+    await sleep(remaining);
+
+    if (
+        expectedCycleId !== cycleId ||
+        !isPlaying
+    ) {
+        return;
+    }
+
+    currentIndex =
+        (currentIndex + 1) % words.length;
+
+    startNewCycle();
+}
+
+
+function startNewCycle() {
+    stopCurrentAudio();
+
+    if (countdownTimer !== null) {
+        window.clearInterval(countdownTimer);
+        countdownTimer = null;
+    }
+
+    cycleId += 1;
+
+    const expectedCycleId = cycleId;
+
+    runCardCycle(expectedCycleId);
+}
+
+
+function moveToCard(nextIndex) {
+    cycleId += 1;
+    stopCurrentAudio();
+
+    if (countdownTimer !== null) {
+        window.clearInterval(countdownTimer);
+        countdownTimer = null;
+    }
+
+    const completeMove = () => {
+        currentIndex = nextIndex;
+
+        flashcard.classList.remove("is-changing");
+
+        if (isPlaying) {
+            startNewCycle();
+        } else {
+            renderCurrentWord();
+            showAllSections();
+
+            progressBar.style.transition = "none";
+            progressBar.style.width = "0%";
+
+            countdown.textContent = "일시정지";
+        }
+    };
+
+    if (settings.fade) {
+        flashcard.classList.add("is-changing");
+        window.setTimeout(completeMove, 280);
     } else {
-        renderCurrentWord();
-        revealAll();
+        completeMove();
     }
 }
 
 
 function showNextCard() {
-    const nextIndex =
-        (currentIndex + 1) % words.length;
-
-    changeCard(nextIndex);
+    moveToCard(
+        (currentIndex + 1) % words.length
+    );
 }
 
 
 function showPreviousCard() {
-    const nextIndex =
+    moveToCard(
         (currentIndex - 1 + words.length) %
-        words.length;
-
-    changeCard(nextIndex);
+        words.length
+    );
 }
 
 
@@ -698,61 +646,24 @@ function togglePlayback() {
     playButton.textContent =
         isPlaying ? "일시정지" : "자동 재생";
 
+    cycleId += 1;
+    stopCurrentAudio();
+
+    if (countdownTimer !== null) {
+        window.clearInterval(countdownTimer);
+        countdownTimer = null;
+    }
+
     if (isPlaying) {
-        startCardCycle();
+        startNewCycle();
     } else {
-        clearTimers();
-        stopCurrentAudio();
+        renderCurrentWord();
+        showAllSections();
 
-        sequenceToken += 1;
+        progressBar.style.transition = "none";
+        progressBar.style.width = "0%";
 
-        revealAll();
-    }
-}
-
-
-async function unlockAudio() {
-    if (audioUnlocked) {
-        return true;
-    }
-
-    /*
-    첫 화면 터치 순간 같은 audioPlayer로 무음 오디오를 재생한다.
-    이후 모든 단어와 예문도 이 audioPlayer 하나만 사용한다.
-    */
-    const silentAudio =
-        "data:audio/wav;base64," +
-        "UklGRigAAABXQVZFZm10IBAAAAABAAEAQB8AAEAfAAABAAgA" +
-        "ZGF0YQQAAAA=";
-
-    try {
-        audioPlayer.src = silentAudio;
-        audioPlayer.currentTime = 0;
-        audioPlayer.volume = 0;
-
-        await audioPlayer.play();
-
-        audioPlayer.pause();
-        audioPlayer.currentTime = 0;
-        audioPlayer.volume = 1;
-
-        audioUnlocked = true;
-
-        console.log(
-            "Persistent audio player unlocked"
-        );
-
-        return true;
-
-    } catch (error) {
-        audioPlayer.volume = 1;
-
-        console.error(
-            "Audio unlock failed:",
-            error
-        );
-
-        return false;
+        countdown.textContent = "일시정지";
     }
 }
 
@@ -778,6 +689,7 @@ function showControls() {
 
 function openSettings() {
     settingsPanel.classList.add("is-open");
+
     settingsPanel.setAttribute(
         "aria-hidden",
         "false"
@@ -789,6 +701,7 @@ function openSettings() {
 
 function closeSettings() {
     settingsPanel.classList.remove("is-open");
+
     settingsPanel.setAttribute(
         "aria-hidden",
         "true"
@@ -824,8 +737,10 @@ function applyTheme() {
 
 function populateSettings() {
     modeSelect.value = currentMode;
+
     durationSelect.value =
         String(settings.duration);
+
     themeSelect.value = settings.theme;
 
     wordAudioToggle.checked =
@@ -854,65 +769,26 @@ async function requestWakeLock() {
 }
 
 
-/* 이벤트 */
-
-previousButton.addEventListener("click", () => {
-    showPreviousCard();
-    showControls();
-});
-
-nextButton.addEventListener("click", () => {
-    showNextCard();
-    showControls();
-});
-
-playButton.addEventListener("click", () => {
-    togglePlayback();
-    showControls();
-});
-
-speakButton.addEventListener("click", async () => {
-    const currentWord = getCurrentWord();
-
-    if (!currentWord) {
-        return;
-    }
-
-    if (!audioUnlocked) {
-        await unlockAudio();
-        showControls();
-        return;
-    }
-
-    await playTTSAudio(
-        currentWord.vocabulary,
-        "word"
-    );
-
-    showControls();
-});
-
-settingsButton.addEventListener(
-    "click",
-    openSettings
-);
-
-closeSettingsButton.addEventListener(
-    "click",
-    closeSettings
-);
-
+/*
+첫 화면 터치:
+현재 단어를 실제로 재생해 음성을 활성화하고
+카드 시간을 처음부터 다시 시작한다.
+*/
 page.addEventListener(
     "pointerdown",
-    async () => {
-        if (audioUnlocked) {
+    async (event) => {
+        if (
+            audioUnlocked ||
+            event.target.closest("button") ||
+            event.target.closest(".settings-panel")
+        ) {
             return;
         }
 
         const unlocked = await unlockAudio();
 
         if (unlocked && isPlaying) {
-            startCardCycle(true);
+            startNewCycle();
         }
     },
     {
@@ -924,15 +800,83 @@ page.addEventListener(
 page.addEventListener("click", (event) => {
     if (
         event.target.closest("button") ||
-        event.target.closest(
-            ".settings-panel"
-        )
+        event.target.closest(".settings-panel")
     ) {
         return;
     }
 
     showControls();
 });
+
+
+previousButton.addEventListener(
+    "click",
+    async () => {
+        if (!audioUnlocked) {
+            await unlockAudio();
+        }
+
+        showPreviousCard();
+        showControls();
+    }
+);
+
+
+nextButton.addEventListener(
+    "click",
+    async () => {
+        if (!audioUnlocked) {
+            await unlockAudio();
+        }
+
+        showNextCard();
+        showControls();
+    }
+);
+
+
+speakButton.addEventListener(
+    "click",
+    async () => {
+        const currentWord = getCurrentWord();
+
+        if (!currentWord) {
+            return;
+        }
+
+        if (!audioUnlocked) {
+            await unlockAudio();
+            showControls();
+            return;
+        }
+
+        await playTTSAudio(
+            currentWord.vocabulary,
+            "word"
+        );
+
+        showControls();
+    }
+);
+
+
+playButton.addEventListener("click", () => {
+    togglePlayback();
+    showControls();
+});
+
+
+settingsButton.addEventListener(
+    "click",
+    openSettings
+);
+
+
+closeSettingsButton.addEventListener(
+    "click",
+    closeSettings
+);
+
 
 durationSelect.addEventListener("change", () => {
     settings.duration =
@@ -941,9 +885,10 @@ durationSelect.addEventListener("change", () => {
     saveSettings();
 
     if (isPlaying) {
-        startCardCycle();
+        startNewCycle();
     }
 });
+
 
 themeSelect.addEventListener("change", () => {
     settings.theme = themeSelect.value;
@@ -951,6 +896,7 @@ themeSelect.addEventListener("change", () => {
     saveSettings();
     applyTheme();
 });
+
 
 wordAudioToggle.addEventListener(
     "change",
@@ -962,6 +908,7 @@ wordAudioToggle.addEventListener(
     }
 );
 
+
 sentenceAudioToggle.addEventListener(
     "change",
     () => {
@@ -972,10 +919,12 @@ sentenceAudioToggle.addEventListener(
     }
 );
 
+
 fadeToggle.addEventListener("change", () => {
     settings.fade = fadeToggle.checked;
     saveSettings();
 });
+
 
 modeSelect.addEventListener("change", () => {
     const selectedMode = modeSelect.value;
@@ -986,12 +935,21 @@ modeSelect.addEventListener("change", () => {
         )}`;
 });
 
-document.addEventListener("keydown", (event) => {
+
+document.addEventListener("keydown", async (event) => {
     if (event.key === "ArrowLeft") {
+        if (!audioUnlocked) {
+            await unlockAudio();
+        }
+
         showPreviousCard();
     }
 
     if (event.key === "ArrowRight") {
+        if (!audioUnlocked) {
+            await unlockAudio();
+        }
+
         showNextCard();
     }
 
@@ -1002,6 +960,7 @@ document.addEventListener("keydown", (event) => {
 
     showControls();
 });
+
 
 document.addEventListener(
     "visibilitychange",
@@ -1020,8 +979,9 @@ document.addEventListener(
 populateSettings();
 applyTheme();
 renderCurrentWord();
+showAllSections();
 requestWakeLock();
-startCardCycle();
+startNewCycle();
 
 window.setInterval(
     applyTheme,
