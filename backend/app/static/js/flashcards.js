@@ -406,7 +406,7 @@ async function playTTSAudio(
 }
 
 
-async function speakWordTwice(token = sequenceToken) {
+async function speakWordOnce(token = sequenceToken) {
     const currentWord = getCurrentWord();
 
     if (
@@ -420,21 +420,7 @@ async function speakWordTwice(token = sequenceToken) {
     const word =
         (currentWord.vocabulary || "").trim();
 
-    if (!word) {
-        return;
-    }
-
-    await playTTSAudio(word, "word");
-
-    if (token !== sequenceToken) {
-        return;
-    }
-
-    await new Promise((resolve) => {
-        window.setTimeout(resolve, 600);
-    });
-
-    if (token !== sequenceToken) {
+    if (!word || token !== sequenceToken) {
         return;
     }
 
@@ -482,33 +468,50 @@ function startCardCycle() {
     const totalMs = settings.duration * 1000;
 
     const answerTime =
-        Math.max(1000, totalMs * 0.10);
+        Math.max(800, totalMs * 0.05);
 
     const wordTime =
-        Math.max(1500, totalMs * 0.16);
-
-    const exampleTime =
-        Math.max(4000, totalMs * 0.40);
+        Math.max(1000, totalMs * 0.08);
 
     const synonymsTime =
-        Math.max(6000, totalMs * 0.62);
+        Math.max(6500, totalMs * 0.55);
 
     const usageTime =
-        Math.max(7500, totalMs * 0.76);
+        Math.max(9000, totalMs * 0.72);
 
     schedule(() => {
         recallPrompt.style.opacity = "0.4";
         setStageVisible(answerBlock, true);
     }, answerTime);
 
-    schedule(() => {
-        speakWordTwice(token);
-    }, wordTime);
+    /*
+    단어 1회 재생이 완전히 끝난 뒤
+    잠깐 쉬고 예문을 표시하고 읽는다.
+    */
+    schedule(async () => {
+        await speakWordOnce(token);
 
-    schedule(() => {
+        if (
+            token !== sequenceToken ||
+            !isPlaying
+        ) {
+            return;
+        }
+
+        await new Promise((resolve) => {
+            window.setTimeout(resolve, 800);
+        });
+
+        if (
+            token !== sequenceToken ||
+            !isPlaying
+        ) {
+            return;
+        }
+
         setStageVisible(exampleSection, true);
-        speakSentence(token);
-    }, exampleTime);
+        await speakSentence(token);
+    }, wordTime);
 
     schedule(() => {
         setStageVisible(synonymsSection, true);
