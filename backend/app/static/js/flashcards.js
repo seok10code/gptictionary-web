@@ -16,7 +16,7 @@ let settings = loadSettings();
 
 let currentIndex = 0;
 let isPlaying = true;
-let audioEnabled = false;
+let audioUnlocked = false;
 let sequenceToken = 0;
 
 let timers = [];
@@ -24,6 +24,7 @@ let countdownTimer = null;
 let controlsTimer = null;
 let currentAudio = null;
 let currentAudioUrl = null;
+let currentAudioFinish = null;
 let wakeLock = null;
 
 const audioCache = new Map();
@@ -35,10 +36,6 @@ const progressBar = document.getElementById("progress-bar");
 const counter = document.getElementById("counter");
 const countdown = document.getElementById("countdown");
 const modeLabel = document.getElementById("mode-label");
-
-const audioEnableButton = document.getElementById(
-    "audio-enable-button"
-);
 
 const recallPrompt = document.getElementById("recall-prompt");
 const wordElement = document.getElementById("word");
@@ -287,10 +284,27 @@ function startCountdown() {
 
 
 function stopCurrentAudio() {
-    if (currentAudio) {
-        currentAudio.pause();
-        currentAudio.currentTime = 0;
-        currentAudio = null;
+    const audio = currentAudio;
+    const finish = currentAudioFinish;
+
+    currentAudio = null;
+    currentAudioFinish = null;
+
+    if (audio) {
+        try {
+            audio.pause();
+            audio.currentTime = 0;
+        } catch {
+            // 이미 종료된 오디오는 무시
+        }
+    }
+
+    /*
+    자동 카드 전환으로 음성이 중단돼도
+    기존 await가 영원히 멈추지 않게 한다.
+    */
+    if (finish) {
+        finish();
     }
 
     if (currentAudioUrl) {
@@ -341,14 +355,14 @@ async function requestTTSAudio(
 }
 
 
-async function playTTSAudio(
+async async function playTTSAudio(
     text,
     audioType = "word"
 ) {
     const cleanText = (text || "").trim();
 
-    if (!cleanText || !audioEnabled) {
-        return;
+    if (!cleanText || !audioUnlocked) {
+        return false;
     }
 
     stopCurrentAudio();
@@ -370,38 +384,83 @@ async function playTTSAudio(
 
         currentAudio = audio;
 
-        await new Promise((resolve) => {
-            const finish = () => {
+        const played = await new Promise((resolve) => {
+            let finished = false;
+
+            const finish = (result) => {
+                if (finished) {
+                    return;
+                }
+
+                finished = true;
+
+                audio.removeEventListener(
+                    "ended",
+                    handleEnded
+                );
+
+                audio.removeEventListener(
+                    "error",
+                    handleError
+                );
+
                 if (currentAudio === audio) {
                     currentAudio = null;
                 }
 
-                resolve();
+                if (currentAudioFinish === stopResolver) {
+                    currentAudioFinish = null;
+                }
+
+                resolve(result);
             };
+
+            const handleEnded = () => {
+                finish(true);
+            };
+
+            const handleError = () => {
+                console.error(
+                    "TTS audio error:",
+                    audio.error
+                );
+
+                finish(false);
+            };
+
+            const stopResolver = () => {
+                finish(false);
+            };
+
+            currentAudioFinish = stopResolver;
 
             audio.addEventListener(
                 "ended",
-                finish,
+                handleEnded,
                 { once: true }
             );
 
             audio.addEventListener(
                 "error",
-                finish,
+                handleError,
                 { once: true }
             );
 
             audio.play().catch((error) => {
                 console.error(
-                    "Audio playback failed:",
+                    "TTS playback failed:",
                     error
                 );
 
-                finish();
+                finish(false);
             });
         });
+
+        return played;
+
     } catch (error) {
         console.error("OpenAI TTS error:", error);
+        return false;
     }
 }
 
@@ -437,9 +496,12 @@ function sleep(ms) {
 }
 
 
-async function runCardAudioSequence(token) {
+async async function runCardAudioSequence(
+    token,
+    skipWordAudio = false
+) {
     if (
-        !audioEnabled ||
+        !audioUnlocked ||
         token !== sequenceToken ||
         !isPlaying
     ) {
@@ -461,7 +523,11 @@ async function runCardAudioSequence(token) {
     /*
     1. 단어 한 번
     */
-    if (settings.wordAudio && word) {
+    if (
+        !skipWordAudio &&
+        settings.wordAudio &&
+        word
+    ) {
         await playTTSAudio(word, "word");
     }
 
@@ -475,7 +541,9 @@ async function runCardAudioSequence(token) {
     /*
     2. 단어와 예문 사이 간격
     */
-    await sleep(800);
+    await new Promise((resolve) => {
+        window.setTimeout(resolve, 800);
+    });
 
     if (
         token !== sequenceToken ||
@@ -485,11 +553,14 @@ async function runCardAudioSequence(token) {
     }
 
     /*
-    3. 예문 표시 후 예문 읽기
+    3. 예문 표시 및 재생
     */
     setStageVisible(exampleSection, true);
 
-    if (settings.sentenceAudio && sentence) {
+    if (
+        settings.sentenceAudio &&
+        sentence
+    ) {
         await playTTSAudio(
             sentence,
             "sentence"
@@ -497,7 +568,9 @@ async function runCardAudioSequence(token) {
     }
 }
 
-function startCardCycle() {
+function startCardCycle(
+    skipWordAudio = false
+) {
     clearTimers();
     stopCurrentAudio();
 
@@ -512,9 +585,6 @@ function startCardCycle() {
     const totalMs =
         settings.duration * 1000;
 
-    /*
-    화면 표시 시간
-    */
     const answerTime =
         Math.max(700, totalMs * 0.05);
 
@@ -533,10 +603,13 @@ function startCardCycle() {
     }, answerTime);
 
     /*
-    카드마다 음성 시퀀스는 정확히 한 번만 실행
+    카드당 음성 흐름은 이것 하나만 실행한다.
     */
     schedule(() => {
-        runCardAudioSequence(token);
+        runCardAudioSequence(
+            token,
+            skipWordAudio
+        );
     }, audioStartTime);
 
     schedule(() => {
@@ -647,101 +720,41 @@ function togglePlayback() {
 }
 
 
-async function enableAudio() {
+async async function unlockAudio() {
+    if (audioUnlocked) {
+        return true;
+    }
+
     const currentWord = getCurrentWord();
 
     if (!currentWord) {
-        return;
+        return false;
     }
 
     const word =
         (currentWord.vocabulary || "").trim();
 
     if (!word) {
-        return;
+        return false;
     }
 
-    audioEnableButton.disabled = true;
-    audioEnableButton.textContent =
-        "음성 준비 중...";
+    /*
+    사용자가 화면을 터치한 이벤트 안에서
+    실제 단어 음성을 한 번 재생한다.
+    */
+    audioUnlocked = true;
 
-    clearTimers();
-    stopCurrentAudio();
+    const played = await playTTSAudio(
+        word,
+        "word"
+    );
 
-    sequenceToken += 1;
-
-    try {
-        const blob = await requestTTSAudio(
-            word,
-            "word"
-        );
-
-        currentAudioUrl =
-            URL.createObjectURL(blob);
-
-        const audio =
-            new Audio(currentAudioUrl);
-
-        audio.preload = "auto";
-        audio.volume = 1;
-        audio.playsInline = true;
-
-        currentAudio = audio;
-
-        /*
-        사용자가 누른 이벤트 안에서 실제 소리를 재생해
-        크롬 오디오 권한을 활성화한다.
-        */
-        await audio.play();
-
-        audioEnabled = true;
-
-        audioEnableButton.classList.add(
-            "is-enabled"
-        );
-
-        await new Promise((resolve) => {
-            const finish = () => {
-                if (currentAudio === audio) {
-                    currentAudio = null;
-                }
-
-                resolve();
-            };
-
-            audio.addEventListener(
-                "ended",
-                finish,
-                { once: true }
-            );
-
-            audio.addEventListener(
-                "error",
-                finish,
-                { once: true }
-            );
-        });
-
-        /*
-        방금 단어를 한 번 읽었지만,
-        카드 사이클을 새로 시작해 다음 카드부터
-        항상 동일한 로직을 사용한다.
-        */
-        startCardCycle();
-    } catch (error) {
-        console.error(
-            "Audio enable failed:",
-            error
-        );
-
-        audioEnabled = false;
-
-        audioEnableButton.disabled = false;
-        audioEnableButton.textContent =
-            "🔊 음성 시작";
-
-        startCardCycle();
+    if (!played) {
+        audioUnlocked = false;
+        return false;
     }
+
+    return true;
 }
 
 
@@ -844,11 +857,6 @@ async function requestWakeLock() {
 
 /* 이벤트 */
 
-audioEnableButton.addEventListener(
-    "click",
-    enableAudio
-);
-
 previousButton.addEventListener("click", () => {
     showPreviousCard();
     showControls();
@@ -871,8 +879,9 @@ speakButton.addEventListener("click", async () => {
         return;
     }
 
-    if (!audioEnabled) {
-        await enableAudio();
+    if (!audioUnlocked) {
+        await unlockAudio();
+        showControls();
         return;
     }
 
@@ -893,6 +902,25 @@ closeSettingsButton.addEventListener(
     "click",
     closeSettings
 );
+
+page.addEventListener(
+    "pointerdown",
+    async () => {
+        if (audioUnlocked) {
+            return;
+        }
+
+        const unlocked = await unlockAudio();
+
+        if (unlocked && isPlaying) {
+            startCardCycle(true);
+        }
+    },
+    {
+        passive: true,
+    }
+);
+
 
 page.addEventListener("click", (event) => {
     if (
