@@ -406,28 +406,6 @@ async function playTTSAudio(
 }
 
 
-async function speakWordOnce(token = sequenceToken) {
-    const currentWord = getCurrentWord();
-
-    if (
-        !currentWord ||
-        !settings.wordAudio ||
-        !audioEnabled
-    ) {
-        return;
-    }
-
-    const word =
-        (currentWord.vocabulary || "").trim();
-
-    if (!word || token !== sequenceToken) {
-        return;
-    }
-
-    await playTTSAudio(word, "word");
-}
-
-
 async function speakSentence(token = sequenceToken) {
     const currentWord = getCurrentWord();
 
@@ -452,8 +430,74 @@ async function speakSentence(token = sequenceToken) {
     );
 }
 
+function sleep(ms) {
+    return new Promise((resolve) => {
+        window.setTimeout(resolve, ms);
+    });
+}
 
-function startCardCycle(skipWordAudio = false) {
+
+async function runCardAudioSequence(token) {
+    if (
+        !audioEnabled ||
+        token !== sequenceToken ||
+        !isPlaying
+    ) {
+        return;
+    }
+
+    const currentWord = getCurrentWord();
+
+    if (!currentWord) {
+        return;
+    }
+
+    const word =
+        (currentWord.vocabulary || "").trim();
+
+    const sentence =
+        (currentWord.sentence || "").trim();
+
+    /*
+    1. 단어 한 번
+    */
+    if (settings.wordAudio && word) {
+        await playTTSAudio(word, "word");
+    }
+
+    if (
+        token !== sequenceToken ||
+        !isPlaying
+    ) {
+        return;
+    }
+
+    /*
+    2. 단어와 예문 사이 간격
+    */
+    await sleep(800);
+
+    if (
+        token !== sequenceToken ||
+        !isPlaying
+    ) {
+        return;
+    }
+
+    /*
+    3. 예문 표시 후 예문 읽기
+    */
+    setStageVisible(exampleSection, true);
+
+    if (settings.sentenceAudio && sentence) {
+        await playTTSAudio(
+            sentence,
+            "sentence"
+        );
+    }
+}
+
+function startCardCycle() {
     clearTimers();
     stopCurrentAudio();
 
@@ -465,51 +509,35 @@ function startCardCycle(skipWordAudio = false) {
     restartProgress();
     startCountdown();
 
-    const totalMs = settings.duration * 1000;
+    const totalMs =
+        settings.duration * 1000;
 
+    /*
+    화면 표시 시간
+    */
     const answerTime =
-        Math.max(800, totalMs * 0.05);
+        Math.max(700, totalMs * 0.05);
 
-    const wordTime =
+    const audioStartTime =
         Math.max(1000, totalMs * 0.08);
 
     const synonymsTime =
-        Math.max(6500, totalMs * 0.55);
+        Math.max(6000, totalMs * 0.55);
 
     const usageTime =
-        Math.max(9000, totalMs * 0.72);
+        Math.max(8500, totalMs * 0.72);
 
     schedule(() => {
         recallPrompt.style.opacity = "0.4";
         setStageVisible(answerBlock, true);
     }, answerTime);
 
-    schedule(async () => {
-        if (!skipWordAudio) {
-            await speakWordOnce(token);
-        }
-
-        if (
-            token !== sequenceToken ||
-            !isPlaying
-        ) {
-            return;
-        }
-
-        await new Promise((resolve) => {
-            window.setTimeout(resolve, 800);
-        });
-
-        if (
-            token !== sequenceToken ||
-            !isPlaying
-        ) {
-            return;
-        }
-
-        setStageVisible(exampleSection, true);
-        await speakSentence(token);
-    }, wordTime);
+    /*
+    카드마다 음성 시퀀스는 정확히 한 번만 실행
+    */
+    schedule(() => {
+        runCardAudioSequence(token);
+    }, audioStartTime);
 
     schedule(() => {
         setStageVisible(synonymsSection, true);
@@ -520,6 +548,13 @@ function startCardCycle(skipWordAudio = false) {
     }, usageTime);
 
     schedule(() => {
+        if (
+            token !== sequenceToken ||
+            !isPlaying
+        ) {
+            return;
+        }
+
         showNextCard();
     }, totalMs);
 }
@@ -619,21 +654,23 @@ async function enableAudio() {
         return;
     }
 
-    audioEnableButton.disabled = true;
-    audioEnableButton.textContent = "음성 준비 중...";
+    const word =
+        (currentWord.vocabulary || "").trim();
 
-    /*
-    늦게 눌러도 기존 카드의 예문 타이머가 실행되지 않게
-    현재 타이머와 음성을 먼저 전부 정리한다.
-    */
+    if (!word) {
+        return;
+    }
+
+    audioEnableButton.disabled = true;
+    audioEnableButton.textContent =
+        "음성 준비 중...";
+
     clearTimers();
     stopCurrentAudio();
+
     sequenceToken += 1;
 
     try {
-        const word =
-            (currentWord.vocabulary || "").trim();
-
         const blob = await requestTTSAudio(
             word,
             "word"
@@ -642,7 +679,8 @@ async function enableAudio() {
         currentAudioUrl =
             URL.createObjectURL(blob);
 
-        const audio = new Audio(currentAudioUrl);
+        const audio =
+            new Audio(currentAudioUrl);
 
         audio.preload = "auto";
         audio.volume = 1;
@@ -651,8 +689,8 @@ async function enableAudio() {
         currentAudio = audio;
 
         /*
-        사용자 클릭 이벤트 안에서 실제 음성을 재생해
-        크롬의 자동 음성 권한을 활성화한다.
+        사용자가 누른 이벤트 안에서 실제 소리를 재생해
+        크롬 오디오 권한을 활성화한다.
         */
         await audio.play();
 
@@ -685,11 +723,11 @@ async function enableAudio() {
         });
 
         /*
-        단어는 버튼 클릭으로 이미 한 번 읽었으므로,
-        새 사이클에서는 단어 발음을 건너뛰고
-        예문부터 자연스럽게 이어간다.
+        방금 단어를 한 번 읽었지만,
+        카드 사이클을 새로 시작해 다음 카드부터
+        항상 동일한 로직을 사용한다.
         */
-        startCardCycle(true);
+        startCardCycle();
     } catch (error) {
         console.error(
             "Audio enable failed:",
