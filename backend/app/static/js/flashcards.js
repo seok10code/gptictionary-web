@@ -355,7 +355,7 @@ async function requestTTSAudio(
 }
 
 
-async async function playTTSAudio(
+async function playTTSAudio(
     text,
     audioType = "word"
 ) {
@@ -496,7 +496,7 @@ function sleep(ms) {
 }
 
 
-async async function runCardAudioSequence(
+async function runCardAudioSequence(
     token,
     skipWordAudio = false
 ) {
@@ -720,7 +720,7 @@ function togglePlayback() {
 }
 
 
-async async function unlockAudio() {
+async function unlockAudio() {
     if (audioUnlocked) {
         return true;
     }
