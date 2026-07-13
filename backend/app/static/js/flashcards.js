@@ -453,7 +453,7 @@ async function speakSentence(token = sequenceToken) {
 }
 
 
-function startCardCycle() {
+function startCardCycle(skipWordAudio = false) {
     clearTimers();
     stopCurrentAudio();
 
@@ -484,12 +484,10 @@ function startCardCycle() {
         setStageVisible(answerBlock, true);
     }, answerTime);
 
-    /*
-    단어 1회 재생이 완전히 끝난 뒤
-    잠깐 쉬고 예문을 표시하고 읽는다.
-    */
     schedule(async () => {
-        await speakWordOnce(token);
+        if (!skipWordAudio) {
+            await speakWordOnce(token);
+        }
 
         if (
             token !== sequenceToken ||
@@ -624,6 +622,14 @@ async function enableAudio() {
     audioEnableButton.disabled = true;
     audioEnableButton.textContent = "음성 준비 중...";
 
+    /*
+    늦게 눌러도 기존 카드의 예문 타이머가 실행되지 않게
+    현재 타이머와 음성을 먼저 전부 정리한다.
+    */
+    clearTimers();
+    stopCurrentAudio();
+    sequenceToken += 1;
+
     try {
         const word =
             (currentWord.vocabulary || "").trim();
@@ -633,17 +639,20 @@ async function enableAudio() {
             "word"
         );
 
-        stopCurrentAudio();
-
         currentAudioUrl =
             URL.createObjectURL(blob);
 
         const audio = new Audio(currentAudioUrl);
 
+        audio.preload = "auto";
+        audio.volume = 1;
+        audio.playsInline = true;
+
         currentAudio = audio;
 
         /*
-        이 play()는 사용자가 직접 누른 클릭 이벤트 안에서 실행된다.
+        사용자 클릭 이벤트 안에서 실제 음성을 재생해
+        크롬의 자동 음성 권한을 활성화한다.
         */
         await audio.play();
 
@@ -654,27 +663,46 @@ async function enableAudio() {
         );
 
         await new Promise((resolve) => {
+            const finish = () => {
+                if (currentAudio === audio) {
+                    currentAudio = null;
+                }
+
+                resolve();
+            };
+
             audio.addEventListener(
                 "ended",
-                resolve,
+                finish,
+                { once: true }
+            );
+
+            audio.addEventListener(
+                "error",
+                finish,
                 { once: true }
             );
         });
 
-        await new Promise((resolve) => {
-            window.setTimeout(resolve, 600);
-        });
-
-        await playTTSAudio(word, "word");
+        /*
+        단어는 버튼 클릭으로 이미 한 번 읽었으므로,
+        새 사이클에서는 단어 발음을 건너뛰고
+        예문부터 자연스럽게 이어간다.
+        */
+        startCardCycle(true);
     } catch (error) {
         console.error(
             "Audio enable failed:",
             error
         );
 
+        audioEnabled = false;
+
         audioEnableButton.disabled = false;
         audioEnableButton.textContent =
             "🔊 음성 시작";
+
+        startCardCycle();
     }
 }
 
