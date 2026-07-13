@@ -22,10 +22,19 @@ let sequenceToken = 0;
 let timers = [];
 let countdownTimer = null;
 let controlsTimer = null;
-let currentAudio = null;
+
+
+
+let wakeLock = null;
+
+const audioPlayer = new Audio();
+
+audioPlayer.preload = "auto";
+audioPlayer.playsInline = true;
+audioPlayer.volume = 1;
+
 let currentAudioUrl = null;
 let currentAudioFinish = null;
-let wakeLock = null;
 
 const audioCache = new Map();
 
@@ -284,27 +293,19 @@ function startCountdown() {
 
 
 function stopCurrentAudio() {
-    const audio = currentAudio;
     const finish = currentAudioFinish;
 
-    currentAudio = null;
     currentAudioFinish = null;
 
-    if (audio) {
-        try {
-            audio.pause();
-            audio.currentTime = 0;
-        } catch {
-            // 이미 종료된 오디오는 무시
-        }
+    try {
+        audioPlayer.pause();
+        audioPlayer.currentTime = 0;
+    } catch {
+        // 이미 정지된 경우 무시
     }
 
-    /*
-    자동 카드 전환으로 음성이 중단돼도
-    기존 await가 영원히 멈추지 않게 한다.
-    */
     if (finish) {
-        finish();
+        finish(false);
     }
 
     if (currentAudioUrl) {
@@ -376,43 +377,35 @@ async function playTTSAudio(
         currentAudioUrl =
             URL.createObjectURL(blob);
 
-        const audio = new Audio(currentAudioUrl);
+        audioPlayer.src = currentAudioUrl;
+        audioPlayer.currentTime = 0;
+        audioPlayer.volume = 1;
 
-        audio.preload = "auto";
-        audio.volume = 1;
-        audio.playsInline = true;
+        return await new Promise((resolve) => {
+            let completed = false;
 
-        currentAudio = audio;
-
-        const played = await new Promise((resolve) => {
-            let finished = false;
-
-            const finish = (result) => {
-                if (finished) {
+            const finish = (playedNormally) => {
+                if (completed) {
                     return;
                 }
 
-                finished = true;
+                completed = true;
 
-                audio.removeEventListener(
+                audioPlayer.removeEventListener(
                     "ended",
                     handleEnded
                 );
 
-                audio.removeEventListener(
+                audioPlayer.removeEventListener(
                     "error",
                     handleError
                 );
 
-                if (currentAudio === audio) {
-                    currentAudio = null;
-                }
-
-                if (currentAudioFinish === stopResolver) {
+                if (currentAudioFinish === finish) {
                     currentAudioFinish = null;
                 }
 
-                resolve(result);
+                resolve(playedNormally);
             };
 
             const handleEnded = () => {
@@ -421,34 +414,30 @@ async function playTTSAudio(
 
             const handleError = () => {
                 console.error(
-                    "TTS audio error:",
-                    audio.error
+                    "Audio element error:",
+                    audioPlayer.error
                 );
 
                 finish(false);
             };
 
-            const stopResolver = () => {
-                finish(false);
-            };
+            currentAudioFinish = finish;
 
-            currentAudioFinish = stopResolver;
-
-            audio.addEventListener(
+            audioPlayer.addEventListener(
                 "ended",
                 handleEnded,
                 { once: true }
             );
 
-            audio.addEventListener(
+            audioPlayer.addEventListener(
                 "error",
                 handleError,
                 { once: true }
             );
 
-            audio.play().catch((error) => {
+            audioPlayer.play().catch((error) => {
                 console.error(
-                    "TTS playback failed:",
+                    "Automatic audio playback failed:",
                     error
                 );
 
@@ -456,10 +445,12 @@ async function playTTSAudio(
             });
         });
 
-        return played;
-
     } catch (error) {
-        console.error("OpenAI TTS error:", error);
+        console.error(
+            "OpenAI TTS error:",
+            error
+        );
+
         return false;
     }
 }
@@ -725,36 +716,44 @@ async function unlockAudio() {
         return true;
     }
 
-    const currentWord = getCurrentWord();
-
-    if (!currentWord) {
-        return false;
-    }
-
-    const word =
-        (currentWord.vocabulary || "").trim();
-
-    if (!word) {
-        return false;
-    }
-
     /*
-    사용자가 화면을 터치한 이벤트 안에서
-    실제 단어 음성을 한 번 재생한다.
+    첫 화면 터치 순간 같은 audioPlayer로 무음 오디오를 재생한다.
+    이후 모든 단어와 예문도 이 audioPlayer 하나만 사용한다.
     */
-    audioUnlocked = true;
+    const silentAudio =
+        "data:audio/wav;base64," +
+        "UklGRigAAABXQVZFZm10IBAAAAABAAEAQB8AAEAfAAABAAgA" +
+        "ZGF0YQQAAAA=";
 
-    const played = await playTTSAudio(
-        word,
-        "word"
-    );
+    try {
+        audioPlayer.src = silentAudio;
+        audioPlayer.currentTime = 0;
+        audioPlayer.volume = 0;
 
-    if (!played) {
-        audioUnlocked = false;
+        await audioPlayer.play();
+
+        audioPlayer.pause();
+        audioPlayer.currentTime = 0;
+        audioPlayer.volume = 1;
+
+        audioUnlocked = true;
+
+        console.log(
+            "Persistent audio player unlocked"
+        );
+
+        return true;
+
+    } catch (error) {
+        audioPlayer.volume = 1;
+
+        console.error(
+            "Audio unlock failed:",
+            error
+        );
+
         return false;
     }
-
-    return true;
 }
 
 
