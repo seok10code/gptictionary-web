@@ -17,6 +17,7 @@ from backend.app.api.routes.questions import router as questions_router
 from backend.app.api.routes.settings import router as settings_router
 from backend.app.api.routes.search import router as search_router
 from backend.app.api.routes import writing
+from backend.app.api.routes.flashcards import router as flashcards_router
 
 from backend.app.db.database import get_db
 from backend.app.services.stats_service import get_dashboard_data
@@ -87,6 +88,7 @@ app.include_router(questions_router)
 app.include_router(settings_router)
 app.include_router(search_router)
 app.include_router(writing.router)
+app.include_router(flashcards_router)
 
 @app.get("/", response_class=HTMLResponse)
 def home(

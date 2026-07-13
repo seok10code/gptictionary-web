@@ -1,0 +1,222 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+    <meta charset="UTF-8">
+
+    <meta
+        name="viewport"
+        content="width=device-width, initial-scale=1.0, viewport-fit=cover"
+    >
+
+    <meta name="theme-color" content="#0d0f14">
+
+    <title>GPTictionary Flashcards</title>
+
+    <link
+        rel="stylesheet"
+        href="{{ url_for('static', path='css/flashcards.css') }}"
+    >
+</head>
+
+<body>
+
+{% if words %}
+
+<main class="flashcards-page" id="flashcards-page">
+
+    <div class="progress-track">
+        <div class="progress-bar" id="progress-bar"></div>
+    </div>
+
+    <header class="top-bar">
+        <div class="counter" id="counter"></div>
+
+        <div class="top-status">
+            <span id="mode-label"></span>
+            <span id="countdown"></span>
+
+            <button
+                class="audio-enable-button"
+                id="audio-enable-button"
+                type="button"
+            >
+                🔊 음성 시작
+            </button>
+        </div>
+    </header>
+
+    <article class="flashcard" id="flashcard">
+
+        <section class="word-panel">
+            <p class="recall-prompt" id="recall-prompt"></p>
+
+            <h1 class="word" id="word"></h1>
+
+            <div
+                class="answer-block stage-hidden"
+                id="answer-block"
+            >
+                <p class="definition" id="definition"></p>
+            </div>
+        </section>
+
+        <section class="details-panel">
+
+            <div
+                class="detail-section stage-hidden"
+                id="example-section"
+            >
+                <p class="section-label">EXAMPLE</p>
+                <p class="sentence" id="sentence"></p>
+            </div>
+
+            <div
+                class="detail-section stage-hidden"
+                id="synonyms-section"
+            >
+                <p class="section-label">SYNONYMS</p>
+                <p class="synonyms" id="synonyms"></p>
+            </div>
+
+            <div
+                class="detail-section stage-hidden"
+                id="usage-section"
+            >
+                <p class="section-label">USAGE NOTE</p>
+                <p class="usage-note" id="usage-note"></p>
+            </div>
+
+        </section>
+
+    </article>
+
+    <nav class="controls is-hidden" id="controls">
+        <button id="previous-button" type="button">
+            이전
+        </button>
+
+        <button id="speak-button" type="button">
+            발음
+        </button>
+
+        <button id="play-button" type="button">
+            일시정지
+        </button>
+
+        <button id="next-button" type="button">
+            다음
+        </button>
+
+        <button id="settings-button" type="button">
+            설정
+        </button>
+    </nav>
+
+</main>
+
+<aside
+    class="settings-panel"
+    id="settings-panel"
+    aria-hidden="true"
+>
+    <div class="settings-header">
+        <h2>플래시카드 설정</h2>
+
+        <button id="close-settings-button" type="button">
+            닫기
+        </button>
+    </div>
+
+    <div class="setting-group">
+        <label for="mode-select">학습 모드</label>
+
+        <select id="mode-select">
+            <option value="random">랜덤 단어</option>
+            <option value="priority">우선순위 높은 단어</option>
+            <option value="memorize">암기 횟수 적은 단어</option>
+            <option value="wrong">자주 틀린 단어</option>
+            <option value="recent">최근 추가 단어</option>
+            <option value="today">오늘 추가한 단어</option>
+        </select>
+    </div>
+
+    <div class="setting-group">
+        <label for="duration-select">카드 표시 시간</label>
+
+        <select id="duration-select">
+            <option value="10">10초</option>
+            <option value="15">15초</option>
+            <option value="20">20초</option>
+            <option value="30">30초</option>
+            <option value="60">60초</option>
+        </select>
+    </div>
+
+    <div class="setting-group">
+        <label for="theme-select">화면 테마</label>
+
+        <select id="theme-select">
+            <option value="auto">낮·밤 자동</option>
+            <option value="dark">다크 모드</option>
+            <option value="light">라이트 모드</option>
+        </select>
+    </div>
+
+    <label class="toggle-row">
+        <span>
+            <strong>단어 자동 발음</strong>
+            <small>카드마다 단어를 두 번 읽습니다.</small>
+        </span>
+
+        <input id="word-audio-toggle" type="checkbox">
+    </label>
+
+    <label class="toggle-row">
+        <span>
+            <strong>예문 자동 읽기</strong>
+            <small>예문이 나타날 때 읽습니다.</small>
+        </span>
+
+        <input id="sentence-audio-toggle" type="checkbox">
+    </label>
+
+    <label class="toggle-row">
+        <span>
+            <strong>페이드 효과</strong>
+            <small>카드가 부드럽게 전환됩니다.</small>
+        </span>
+
+        <input id="fade-toggle" type="checkbox">
+    </label>
+
+    <p class="settings-help">
+        크롬 정책상 음성은 화면 위의 ‘음성 시작’을 처음 한 번 눌러야 합니다.
+    </p>
+</aside>
+
+<script>
+    window.FLASHCARD_DATA = {
+        words: {{ words | tojson }},
+        mode: {{ mode | tojson }}
+    };
+</script>
+
+<script src="{{ url_for('static', path='js/flashcards.js') }}"></script>
+
+{% else %}
+
+<main class="empty-page">
+    <section class="empty-state">
+        <p>GPTICTIONARY</p>
+        <h1>표시할 단어가 없습니다.</h1>
+
+        <a href="/flashcards?mode=random">
+            랜덤 단어로 보기
+        </a>
+    </section>
+</main>
+
+{% endif %}
+
+</body>
+</html>
