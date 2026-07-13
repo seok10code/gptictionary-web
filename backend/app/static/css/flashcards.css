@@ -45,6 +45,14 @@ input {
     font: inherit;
 }
 
+button,
+select {
+    -webkit-tap-highlight-color: transparent;
+}
+
+
+/* 라이트 모드 */
+
 body.theme-light {
     color-scheme: light;
 
@@ -60,6 +68,9 @@ body.theme-light {
     --shadow: rgba(20, 23, 30, 0.13);
 }
 
+
+/* 전체 페이지 */
+
 .flashcards-page {
     position: relative;
 
@@ -67,14 +78,14 @@ body.theme-light {
     min-height: 100dvh;
 
     padding:
-        max(20px, env(safe-area-inset-top))
-        max(24px, env(safe-area-inset-right))
-        max(20px, env(safe-area-inset-bottom))
-        max(24px, env(safe-area-inset-left));
+        max(14px, env(safe-area-inset-top))
+        max(14px, env(safe-area-inset-right))
+        max(14px, env(safe-area-inset-bottom))
+        max(14px, env(safe-area-inset-left));
 }
 
 
-/* 진행 게이지 */
+/* 상단 진행 게이지 */
 
 .progress-track {
     position: fixed;
@@ -83,7 +94,7 @@ body.theme-light {
     left: 0;
 
     width: 100%;
-    height: 6px;
+    height: 5px;
 
     background: rgba(127, 127, 127, 0.18);
 }
@@ -96,15 +107,15 @@ body.theme-light {
 }
 
 
-/* 상단 */
+/* 상단 상태 표시 */
 
 .top-bar {
     position: absolute;
     z-index: 20;
 
-    top: max(26px, env(safe-area-inset-top));
-    right: max(36px, env(safe-area-inset-right));
-    left: max(36px, env(safe-area-inset-left));
+    top: max(27px, env(safe-area-inset-top));
+    right: max(29px, env(safe-area-inset-right));
+    left: max(29px, env(safe-area-inset-left));
 
     display: flex;
     align-items: center;
@@ -114,18 +125,28 @@ body.theme-light {
 .counter,
 .top-status {
     color: var(--text-muted);
-    font-size: clamp(14px, 1.4vw, 20px);
-    font-weight: 650;
+    font-size: clamp(13px, 1.35vw, 18px);
+    font-weight: 700;
 }
 
 .top-status {
     display: flex;
     align-items: center;
-    gap: 16px;
+    gap: 13px;
+}
+
+/* 랜덤/최근 등의 모드 이름은 화면에서 숨김 */
+#mode-label {
+    display: none;
+}
+
+#countdown {
+    min-width: 28px;
+    text-align: right;
 }
 
 .audio-enable-button {
-    padding: 9px 14px;
+    padding: 8px 13px;
 
     border: 1px solid var(--border);
     border-radius: 999px;
@@ -133,7 +154,7 @@ body.theme-light {
     background: var(--control-bg);
     color: var(--text-primary);
 
-    font-size: 14px;
+    font-size: clamp(12px, 1.15vw, 14px);
     font-weight: 750;
 
     cursor: pointer;
@@ -144,22 +165,22 @@ body.theme-light {
 }
 
 
-/* 카드 */
+/* 메인 카드 */
 
 .flashcard {
     width: 100%;
-    height: calc(100dvh - 40px);
+    height: calc(100dvh - 28px);
 
     display: grid;
-    grid-template-columns: minmax(0, 43%) minmax(0, 57%);
+    grid-template-columns: minmax(0, 48%) minmax(0, 52%);
 
     overflow: hidden;
 
     border: 1px solid var(--border);
-    border-radius: 34px;
+    border-radius: 31px;
 
     background: var(--panel-bg);
-    box-shadow: 0 28px 90px var(--shadow);
+    box-shadow: 0 24px 80px var(--shadow);
 
     transition:
         opacity 320ms ease,
@@ -168,11 +189,11 @@ body.theme-light {
 
 .flashcard.is-changing {
     opacity: 0;
-    transform: scale(0.992);
+    transform: scale(0.993);
 }
 
 
-/* 왼쪽 */
+/* 왼쪽 단어 영역 */
 
 .word-panel {
     min-width: 0;
@@ -181,31 +202,47 @@ body.theme-light {
     flex-direction: column;
     justify-content: center;
 
-    padding: clamp(48px, 5.5vw, 88px);
+    padding:
+        clamp(58px, 7vh, 80px)
+        clamp(36px, 5vw, 72px)
+        clamp(38px, 5vh, 62px);
 }
 
 .recall-prompt {
-    min-height: 28px;
+    min-height: 24px;
     margin: 0 0 20px;
 
     color: var(--text-muted);
-    font-size: clamp(16px, 1.55vw, 22px);
-    font-weight: 600;
+    font-size: clamp(14px, 1.5vw, 20px);
+    font-weight: 650;
+    line-height: 1.4;
 }
 
+
+/*
+긴 표현 수정 핵심:
+- 단어 중간에서 강제로 자르지 않음
+- 공백이 있을 때만 줄바꿈
+*/
+
 .word {
+    max-width: 100%;
     margin: 0;
 
-    font-size: clamp(62px, 7.8vw, 128px);
+    color: var(--text-primary);
+
+    font-size: clamp(52px, 6.2vw, 108px);
     font-weight: 800;
-    line-height: 0.95;
+    line-height: 0.98;
     letter-spacing: -0.055em;
 
-    overflow-wrap: anywhere;
+    word-break: keep-all;
+    overflow-wrap: normal;
+    hyphens: none;
 }
 
 .answer-block {
-    margin-top: 38px;
+    margin-top: clamp(28px, 4vh, 42px);
 
     transition:
         opacity 400ms ease,
@@ -216,15 +253,16 @@ body.theme-light {
     margin: 0;
 
     color: var(--text-secondary);
-    font-size: clamp(27px, 2.8vw, 45px);
+    font-size: clamp(24px, 2.6vw, 40px);
     font-weight: 650;
     line-height: 1.4;
+    letter-spacing: -0.02em;
 
     word-break: keep-all;
 }
 
 
-/* 오른쪽 */
+/* 오른쪽 상세 영역 */
 
 .details-panel {
     min-width: 0;
@@ -232,14 +270,20 @@ body.theme-light {
     display: flex;
     flex-direction: column;
     justify-content: center;
-    gap: clamp(24px, 3vh, 40px);
+    gap: clamp(18px, 2.7vh, 32px);
 
-    padding: clamp(42px, 4.5vw, 70px);
+    padding:
+        clamp(55px, 7vh, 78px)
+        clamp(34px, 4.2vw, 62px)
+        clamp(34px, 4vh, 55px);
 
     overflow-y: auto;
+    overscroll-behavior: contain;
 
     border-left: 1px solid var(--border);
     background: var(--detail-bg);
+
+    scrollbar-width: thin;
 }
 
 .detail-section {
@@ -255,45 +299,57 @@ body.theme-light {
 }
 
 .section-label {
-    margin: 0 0 13px;
+    margin: 0 0 11px;
 
     color: var(--text-muted);
-    font-size: clamp(13px, 1.15vw, 17px);
+    font-size: clamp(11px, 1.05vw, 15px);
     font-weight: 800;
-    letter-spacing: 0.15em;
+    letter-spacing: 0.17em;
 }
+
+
+/* 예문 */
 
 .sentence {
     margin: 0;
 
     color: var(--text-primary);
-    font-size: clamp(25px, 2.75vw, 43px);
-    font-weight: 700;
-    line-height: 1.4;
-    letter-spacing: -0.025em;
+    font-size: clamp(23px, 2.55vw, 39px);
+    font-weight: 720;
+    line-height: 1.38;
+    letter-spacing: -0.03em;
 
-    overflow-wrap: anywhere;
+    word-break: normal;
+    overflow-wrap: break-word;
 }
+
+
+/* 동의어 */
 
 .synonyms {
     margin: 0;
 
     color: var(--text-secondary);
-    font-size: clamp(19px, 1.9vw, 28px);
-    line-height: 1.55;
+    font-size: clamp(17px, 1.75vw, 25px);
+    line-height: 1.5;
 
-    overflow-wrap: anywhere;
+    word-break: normal;
+    overflow-wrap: break-word;
 }
+
+
+/* Usage Note */
 
 .usage-note {
     margin: 0;
 
     color: var(--text-secondary);
-    font-size: clamp(16px, 1.5vw, 23px);
-    line-height: 1.65;
+    font-size: clamp(14px, 1.45vw, 21px);
+    line-height: 1.55;
 
     white-space: pre-line;
-    overflow-wrap: anywhere;
+    word-break: normal;
+    overflow-wrap: break-word;
 }
 
 
@@ -301,7 +357,7 @@ body.theme-light {
 
 .stage-hidden {
     opacity: 0;
-    transform: translateY(14px);
+    transform: translateY(12px);
     pointer-events: none;
 }
 
@@ -312,26 +368,26 @@ body.theme-light {
 }
 
 
-/* 조작 버튼 */
+/* 하단 컨트롤 */
 
 .controls {
     position: fixed;
     z-index: 40;
 
-    bottom: max(30px, env(safe-area-inset-bottom));
+    bottom: max(25px, env(safe-area-inset-bottom));
     left: 50%;
 
     display: flex;
     align-items: center;
-    gap: 10px;
+    gap: 8px;
 
-    padding: 10px;
+    padding: 8px;
 
     border: 1px solid var(--border);
     border-radius: 999px;
 
     background: var(--control-bg);
-    box-shadow: 0 14px 45px var(--shadow);
+    box-shadow: 0 12px 40px var(--shadow);
     backdrop-filter: blur(18px);
 
     transform: translateX(-50%);
@@ -343,26 +399,33 @@ body.theme-light {
 
 .controls.is-hidden {
     opacity: 0;
-    transform: translate(-50%, 14px);
+    transform: translate(-50%, 12px);
     pointer-events: none;
 }
 
 .controls button {
-    min-width: 88px;
-    padding: 13px 18px;
+    min-width: 76px;
+    padding: 11px 15px;
 
     border: 0;
     border-radius: 999px;
 
     background: transparent;
     color: var(--text-primary);
+
+    font-size: 14px;
     font-weight: 700;
 
     cursor: pointer;
 }
 
+.controls button:active {
+    background: var(--border);
+    transform: scale(0.97);
+}
 
-/* 설정 */
+
+/* 설정 패널 */
 
 .settings-panel {
     position: fixed;
@@ -415,6 +478,8 @@ body.theme-light {
 
     background: transparent;
     color: var(--text-primary);
+
+    cursor: pointer;
 }
 
 .setting-group {
@@ -474,7 +539,7 @@ body.theme-light {
 }
 
 
-/* 빈 화면 */
+/* 단어가 없는 화면 */
 
 .empty-page {
     min-height: 100dvh;
@@ -494,7 +559,56 @@ body.theme-light {
 }
 
 
-/* 세로 */
+/* 아이패드 가로 + Safari 주소창이 보이는 낮은 화면 */
+
+@media (orientation: landscape) and (max-height: 850px) {
+    .flashcard {
+        grid-template-columns: minmax(0, 48%) minmax(0, 52%);
+    }
+
+    .word-panel {
+        padding:
+            clamp(54px, 8vh, 68px)
+            clamp(34px, 4.5vw, 60px)
+            clamp(30px, 4vh, 48px);
+    }
+
+    .word {
+        font-size: clamp(49px, 6vw, 92px);
+        line-height: 1;
+    }
+
+    .definition {
+        font-size: clamp(22px, 2.4vw, 35px);
+    }
+
+    .details-panel {
+        justify-content: flex-start;
+
+        gap: clamp(17px, 2.5vh, 25px);
+
+        padding:
+            clamp(58px, 8vh, 72px)
+            clamp(30px, 3.8vw, 52px)
+            34px;
+    }
+
+    .sentence {
+        font-size: clamp(21px, 2.3vw, 34px);
+    }
+
+    .synonyms {
+        font-size: clamp(16px, 1.65vw, 23px);
+    }
+
+    .usage-note {
+        font-size: clamp(13px, 1.35vw, 19px);
+        line-height: 1.5;
+    }
+}
+
+
+/* 세로 화면 */
 
 @media (orientation: portrait) {
     body {
@@ -503,33 +617,39 @@ body.theme-light {
 
     .flashcard {
         height: auto;
-        min-height: calc(100dvh - 40px);
+        min-height: calc(100dvh - 28px);
 
         grid-template-columns: 1fr;
     }
 
     .word-panel {
         min-height: 42dvh;
-        padding: 80px 42px 48px;
+        padding: 78px 38px 45px;
+    }
+
+    .word {
+        font-size: clamp(52px, 12vw, 92px);
     }
 
     .details-panel {
         min-height: 50dvh;
 
-        padding: 48px 42px 110px;
+        padding: 44px 38px 105px;
+
+        overflow: visible;
 
         border-top: 1px solid var(--border);
         border-left: 0;
     }
 
     .controls {
-        width: calc(100% - 34px);
+        width: calc(100% - 30px);
         justify-content: space-around;
     }
 
     .controls button {
         min-width: 0;
-        padding: 12px 8px;
-        font-size: 14px;
+        padding: 11px 7px;
+        font-size: 13px;
     }
 }
