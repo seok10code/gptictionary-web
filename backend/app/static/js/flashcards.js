@@ -32,6 +32,14 @@ audioPlayer.volume = 1;
 let currentAudioUrl = null;
 let currentAudioResolver = null;
 
+let pointerStartX = 0;
+let pointerStartY = 0;
+let pointerStartedAt = 0;
+let activePointerId = null;
+let longPressTimer = null;
+let longPressTriggered = false;
+let didSwipe = false;
+
 
 const page = document.getElementById("flashcards-page");
 const flashcard = document.getElementById("flashcard");
@@ -76,13 +84,6 @@ const sentenceAudioToggle = document.getElementById(
 );
 const fadeToggle = document.getElementById("fade-toggle");
 
-const englishDefinitionElement = document.getElementById(
-    "english-definition"
-);
-
-const englishDefinitionSection = document.getElementById(
-    "english-definition-section"
-);
 const modeNames = {
     random: "랜덤",
     priority: "우선순위",
@@ -165,7 +166,6 @@ function formatUsageNote(text) {
 function showAllSections() {
     const sections = [
         answerBlock,
-        englishDefinitionSection,
         exampleSection,
         synonymsSection,
         usageSection,
@@ -184,8 +184,7 @@ function showAllSections() {
 
 function renderCurrentWord() {
     const currentWord = getCurrentWord();
-    const englishDefinition =
-    (currentWord.english_definition || "").trim();
+
     if (!currentWord) {
         return;
     }
@@ -207,6 +206,26 @@ function renderCurrentWord() {
 
     wordElement.textContent = vocabulary;
 
+    wordElement.classList.remove(
+        "word-medium",
+        "word-long",
+        "word-very-long"
+    );
+
+    if (vocabulary.length >= 28) {
+        wordElement.classList.add(
+            "word-very-long"
+        );
+    } else if (vocabulary.length >= 18) {
+        wordElement.classList.add(
+            "word-long"
+        );
+    } else if (vocabulary.length >= 11) {
+        wordElement.classList.add(
+            "word-medium"
+        );
+    }
+
     definitionElement.textContent =
         definition || "등록된 뜻이 없습니다.";
 
@@ -222,11 +241,6 @@ function renderCurrentWord() {
     synonymsSection.hidden = !synonyms;
     usageSection.hidden = !usageNote;
 
-    englishDefinitionElement.textContent =
-    englishDefinition;
-
-    englishDefinitionSection.hidden =
-    !englishDefinition;
     recallPrompt.textContent =
         `What does "${vocabulary}" mean?`;
 
@@ -811,16 +825,205 @@ page.addEventListener(
 );
 
 
-page.addEventListener("click", (event) => {
+flashcard.addEventListener("click", (event) => {
     if (
         event.target.closest("button") ||
-        event.target.closest(".settings-panel")
+        event.target.closest("a") ||
+        event.target.closest("input") ||
+        event.target.closest("select") ||
+        event.target.closest(".settings-panel") ||
+        longPressTriggered ||
+        didSwipe
     ) {
+        longPressTriggered = false;
+        didSwipe = false;
         return;
     }
 
+    togglePlayback();
     showControls();
 });
+
+
+flashcard.addEventListener(
+    "pointerdown",
+    (event) => {
+        if (
+            event.pointerType === "mouse"
+            && event.button !== 0
+        ) {
+            return;
+        }
+
+        activePointerId = event.pointerId;
+        pointerStartX = event.clientX;
+        pointerStartY = event.clientY;
+        pointerStartedAt = Date.now();
+
+        longPressTriggered = false;
+        didSwipe = false;
+
+        try {
+            flashcard.setPointerCapture(
+                event.pointerId
+            );
+        } catch (error) {
+            // Pointer capture is optional.
+        }
+
+        if (longPressTimer !== null) {
+            window.clearTimeout(longPressTimer);
+        }
+
+        longPressTimer = window.setTimeout(
+            async () => {
+                longPressTriggered = true;
+
+                const currentWord = getCurrentWord();
+
+                if (!currentWord) {
+                    return;
+                }
+
+                if (!audioUnlocked) {
+                    await unlockAudio();
+                } else {
+                    await playTTSAudio(
+                        currentWord.vocabulary,
+                        "word"
+                    );
+                }
+
+                showControls();
+            },
+            650
+        );
+    }
+);
+
+
+flashcard.addEventListener(
+    "pointermove",
+    (event) => {
+        if (
+            activePointerId !== event.pointerId
+        ) {
+            return;
+        }
+
+        const distanceX = Math.abs(
+            event.clientX - pointerStartX
+        );
+
+        const distanceY = Math.abs(
+            event.clientY - pointerStartY
+        );
+
+        if (
+            distanceX > 14
+            || distanceY > 14
+        ) {
+            if (longPressTimer !== null) {
+                window.clearTimeout(
+                    longPressTimer
+                );
+                longPressTimer = null;
+            }
+        }
+
+        if (
+            distanceX > distanceY
+            && distanceX > 10
+        ) {
+            event.preventDefault();
+        }
+    }
+);
+
+
+flashcard.addEventListener(
+    "pointerup",
+    async (event) => {
+        if (
+            activePointerId !== event.pointerId
+        ) {
+            return;
+        }
+
+        activePointerId = null;
+
+        if (longPressTimer !== null) {
+            window.clearTimeout(longPressTimer);
+            longPressTimer = null;
+        }
+
+        if (longPressTriggered) {
+            return;
+        }
+
+        const deltaX =
+            event.clientX - pointerStartX;
+
+        const deltaY =
+            event.clientY - pointerStartY;
+
+        const elapsed =
+            Date.now() - pointerStartedAt;
+
+        const isHorizontalSwipe =
+            Math.abs(deltaX) >= 42
+            && Math.abs(deltaX)
+            > Math.abs(deltaY) * 1.1
+            && elapsed <= 1200;
+
+        if (!isHorizontalSwipe) {
+            return;
+        }
+
+        didSwipe = true;
+        event.preventDefault();
+
+        if (!audioUnlocked) {
+            await unlockAudio();
+        }
+
+        if (deltaX < 0) {
+            flashcard.classList.add(
+                "swipe-left"
+            );
+            showNextCard();
+        } else {
+            flashcard.classList.add(
+                "swipe-right"
+            );
+            showPreviousCard();
+        }
+
+        window.setTimeout(() => {
+            flashcard.classList.remove(
+                "swipe-left",
+                "swipe-right"
+            );
+
+            didSwipe = false;
+        }, 320);
+
+        showControls();
+    }
+);
+
+
+flashcard.addEventListener(
+    "pointercancel",
+    () => {
+        activePointerId = null;
+
+        if (longPressTimer !== null) {
+            window.clearTimeout(longPressTimer);
+            longPressTimer = null;
+        }
+    }
+);
 
 
 previousButton.addEventListener(
@@ -1001,3 +1204,106 @@ window.setInterval(
     applyTheme,
     60 * 1000
 );
+
+
+
+// ===== iPad Safari 전용 스와이프 =====
+(() => {
+    let swipeStartX = 0;
+    let swipeStartY = 0;
+    let swipeStartTime = 0;
+
+    function isFlashcardTarget(target) {
+        return Boolean(
+            target.closest("#flashcard, .flashcard")
+        );
+    }
+
+    function isControlTarget(target) {
+        return Boolean(
+            target.closest(
+                "button, a, input, select, textarea, " +
+                ".controls, .settings-panel"
+            )
+        );
+    }
+
+    document.addEventListener(
+        "touchstart",
+        (event) => {
+            if (
+                event.touches.length !== 1 ||
+                !isFlashcardTarget(event.target) ||
+                isControlTarget(event.target)
+            ) {
+                return;
+            }
+
+            const touch = event.touches[0];
+
+            swipeStartX = touch.clientX;
+            swipeStartY = touch.clientY;
+            swipeStartTime = Date.now();
+        },
+        {
+            capture: true,
+            passive: true,
+        }
+    );
+
+    document.addEventListener(
+        "touchend",
+        (event) => {
+            if (
+                event.changedTouches.length !== 1 ||
+                !isFlashcardTarget(event.target) ||
+                isControlTarget(event.target)
+            ) {
+                return;
+            }
+
+            const touch = event.changedTouches[0];
+
+            const deltaX =
+                touch.clientX - swipeStartX;
+
+            const deltaY =
+                touch.clientY - swipeStartY;
+
+            const elapsed =
+                Date.now() - swipeStartTime;
+
+            const horizontalDistance =
+                Math.abs(deltaX);
+
+            const verticalDistance =
+                Math.abs(deltaY);
+
+            const isSwipe =
+                horizontalDistance >= 30 &&
+                horizontalDistance >
+                    verticalDistance * 1.05 &&
+                elapsed <= 1500;
+
+            if (!isSwipe) {
+                return;
+            }
+
+            event.preventDefault();
+            event.stopPropagation();
+            event.stopImmediatePropagation();
+
+            if (deltaX < 0) {
+                showNextCard();
+            } else {
+                showPreviousCard();
+            }
+
+            showControls();
+        },
+        {
+            capture: true,
+            passive: false,
+        }
+    );
+})();

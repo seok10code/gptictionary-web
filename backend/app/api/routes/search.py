@@ -18,6 +18,9 @@ from backend.app.crud.word_sense import (
 )
 from backend.app.db.database import get_db
 from backend.app.services.word_service import search_word
+from backend.app.services.sense_learning_service import (
+    get_or_create_sense_learning_data,
+)
 
 
 router = APIRouter()
@@ -36,6 +39,10 @@ def base_context(request: Request, **kwargs):
         "error": None,
         "selected_meaning": None,
         "selected_part_of_speech": None,
+        "learning_data": {
+            "coach": None,
+            "confusions": [],
+        },
     }
     context.update(kwargs)
     return context
@@ -102,6 +109,22 @@ def sense_to_dict(sense):
         ),
         "is_primary": bool(sense.is_primary),
         "display_order": sense.display_order,
+        "priority": sense.priority or 0,
+        "memorize_count": (
+            sense.memorize_count or 0
+        ),
+        "total_correct": (
+            sense.total_correct or 0
+        ),
+        "total_wrong": (
+            sense.total_wrong or 0
+        ),
+        "review_count": (
+            sense.review_count or 0
+        ),
+        "review_interval": (
+            sense.review_interval or 0
+        ),
     }
 
 
@@ -358,7 +381,7 @@ async def search_submit(
 
 
 @router.get("/search/result")
-def search_result(
+async def search_result(
     request: Request,
     query: str = Query(...),
     display: str | None = Query(None),
@@ -385,24 +408,65 @@ def search_result(
         else None
     )
 
+    word_data = word_to_dict(
+        db,
+        word,
+        sense_id,
+    )
+
+    primary_sense = (
+        selected_sense
+        or (
+            get_sense_by_id(
+                db,
+                word_data["senses"][0]["id"],
+            )
+            if word_data["senses"]
+            else None
+        )
+    )
+
+    learning_data = {
+        "coach": None,
+        "confusions": [],
+    }
+
+    if primary_sense:
+        learning_data = (
+            await get_or_create_sense_learning_data(
+                db=db,
+                vocabulary=word.vocabulary,
+                sense=primary_sense,
+            )
+        )
+
     return templates.TemplateResponse(
         request=request,
         name="search.html",
         context=base_context(
             request,
             query=display or clean_query,
-            searched_word=clean_query if display else None,
-            word=word_to_dict(db, word, sense_id),
-            source="korean_db" if display else "db",
+            searched_word=(
+                clean_query
+                if display
+                else None
+            ),
+            word=word_data,
+            source=(
+                "korean_db"
+                if display
+                else "db"
+            ),
             selected_meaning=(
-                selected_sense.korean_meaning
-                if selected_sense
+                primary_sense.korean_meaning
+                if primary_sense
                 else None
             ),
             selected_part_of_speech=(
-                selected_sense.part_of_speech
-                if selected_sense
+                primary_sense.part_of_speech
+                if primary_sense
                 else None
             ),
+            learning_data=learning_data,
         ),
     )

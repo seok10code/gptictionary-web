@@ -2,13 +2,60 @@
 
 {% block content %}
 
-<div class="dashboard-header">
-    <div>
-        <h1 class="page-title">대시보드</h1>
-        <p class="page-desc">오늘 학습할 내용과 최근 기록을 확인합니다.</p>
+<section class="review-hero-card">
+    <div class="review-hero-copy">
+        <span class="review-eyebrow">
+            TODAY'S REVIEW
+        </span>
+
+        {% if dashboard.review_words > 0 %}
+            <h1>
+                오늘 복습할 뜻
+                <strong>{{ dashboard.review_words }}개</strong>
+            </h1>
+
+            <p>
+                오늘 완료
+                {{ dashboard.today_reviewed_senses }}
+                /
+                {{ dashboard.review_goal }}
+                ·
+                🔥 {{ dashboard.learning_streak }}일 연속
+            </p>
+        {% else %}
+            <h1>오늘 복습 완료 ✅</h1>
+
+            <p>
+                오늘 {{ dashboard.today_reviewed_senses }}개 뜻을
+                복습했습니다.
+                ·
+                🔥 {{ dashboard.learning_streak }}일 연속
+            </p>
+        {% endif %}
+
+        <div class="review-hero-progress">
+            <div
+                style="width: {{ dashboard.review_progress_percent }}%;"
+            ></div>
+        </div>
     </div>
 
-    <a href="/quiz" class="primary-action">퀴즈 시작</a>
+    <a href="/quiz" class="review-start-button">
+        {% if dashboard.review_words > 0 %}
+            복습 시작
+        {% else %}
+            완료 화면 보기
+        {% endif %}
+    </a>
+</section>
+
+<div class="dashboard-header compact-dashboard-header">
+    <div>
+        <h2 class="page-title">학습 대시보드</h2>
+        <p class="page-desc">
+            오늘의 읽기와 최근 저장한 뜻을 확인합니다.
+        </p>
+    </div>
 </div>
 
 
@@ -134,27 +181,29 @@
 
 <div class="metric-grid">
     <div class="metric-card gradient-blue">
-        <span class="metric-label">저장된 단어</span>
-        <strong>{{ dashboard.total_words }}</strong>
-        <small>Words in your vault</small>
+        <span class="metric-label">저장된 뜻</span>
+        <strong>{{ dashboard.total_senses }}</strong>
+        <small>단어 {{ dashboard.total_words }}개</small>
     </div>
 
     <div class="metric-card gradient-purple">
-        <span class="metric-label">복습 필요</span>
+        <span class="metric-label">지금 복습 가능</span>
         <strong>{{ dashboard.review_words }}</strong>
-        <small>Need review</small>
+        <small>Due senses</small>
     </div>
 
     <div class="metric-card gradient-green">
-        <span class="metric-label">최근 추가</span>
+        <span class="metric-label">최근 추가한 뜻</span>
         <strong>{{ dashboard.today_added }}</strong>
-        <small>Added today</small>
+        <small>Last 24 hours</small>
     </div>
 
     <div class="metric-card gradient-orange">
         <span class="metric-label">오늘 퀴즈</span>
         <strong>{{ dashboard.today_quiz }}</strong>
-        <small>Quiz attempts</small>
+        <small>
+            복습한 뜻 {{ dashboard.today_reviewed_senses }}개
+        </small>
     </div>
 </div>
 
@@ -162,26 +211,37 @@
 <div class="dashboard-grid">
     <div class="panel-card">
         <div class="panel-header">
-            <h2>오늘의 복습 단어</h2>
-            <span>Priority</span>
+            <h2>오늘의 복습 뜻</h2>
+            <span>SRS Due</span>
         </div>
 
         {% if dashboard.today_review_words %}
-            {% for word in dashboard.today_review_words %}
-                <div class="word-row">
+            {% for sense in dashboard.today_review_words %}
+                <a
+                    class="word-row"
+                    href="/search/result?query={{ sense.vocabulary | urlencode }}&sense_id={{ sense.sense_id }}"
+                    style="text-decoration:none;color:inherit;"
+                >
                     <div>
-                        <strong>{{ word.vocabulary }}</strong>
+                        <strong>{{ sense.vocabulary }}</strong>
                         <p>
-                            오답 {{ word.priority }}회 ·
-                            정답 {{ word.memorize_count }}회
+                            {{ sense.part_of_speech }}
+                            ·
+                            {{ sense.korean_meaning }}
+                            <br>
+                            정답 {{ sense.total_correct }}회
+                            ·
+                            오답 {{ sense.total_wrong }}회
                         </p>
                     </div>
 
                     <span class="badge danger">Review</span>
-                </div>
+                </a>
             {% endfor %}
         {% else %}
-            <p class="empty-text">복습할 단어가 없습니다.</p>
+            <p class="empty-text">
+                지금 복습할 뜻이 없습니다. 🎉
+            </p>
         {% endif %}
     </div>
 
@@ -192,18 +252,28 @@
         </div>
 
         {% if dashboard.recent_words %}
-            {% for word in dashboard.recent_words %}
-                <div class="word-row">
+            {% for sense in dashboard.recent_words %}
+                <a
+                    class="word-row"
+                    href="/search/result?query={{ sense.vocabulary | urlencode }}&sense_id={{ sense.sense_id }}"
+                    style="text-decoration:none;color:inherit;"
+                >
                     <div>
-                        <strong>{{ word.vocabulary }}</strong>
-                        <p>{{ word.definition }}</p>
+                        <strong>{{ sense.vocabulary }}</strong>
+                        <p>
+                            {{ sense.part_of_speech }}
+                            ·
+                            {{ sense.korean_meaning }}
+                        </p>
                     </div>
 
                     <span class="badge">New</span>
-                </div>
+                </a>
             {% endfor %}
         {% else %}
-            <p class="empty-text">최근 추가된 단어가 없습니다.</p>
+            <p class="empty-text">
+                최근 추가된 뜻이 없습니다.
+            </p>
         {% endif %}
     </div>
 </div>
@@ -411,5 +481,107 @@ if ("speechSynthesis" in window) {
     };
 }
 </script>
+
+<style>
+.review-hero-card {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 28px;
+    margin-bottom: 26px;
+    padding: clamp(24px, 4vw, 42px);
+    border: 1px solid rgba(99, 102, 241, 0.28);
+    border-radius: 24px;
+    background:
+        radial-gradient(
+            circle at top right,
+            rgba(99, 102, 241, 0.3),
+            transparent 42%
+        ),
+        linear-gradient(
+            135deg,
+            rgba(15, 23, 42, 0.98),
+            rgba(30, 41, 59, 0.96)
+        );
+    color: #fff;
+    box-shadow: 0 24px 70px rgba(15, 23, 42, 0.22);
+}
+
+.review-hero-copy {
+    flex: 1;
+    min-width: 0;
+}
+
+.review-eyebrow {
+    font-size: 0.76rem;
+    font-weight: 800;
+    letter-spacing: 0.16em;
+    opacity: 0.68;
+}
+
+.review-hero-card h1 {
+    margin: 10px 0 8px;
+    font-size: clamp(1.8rem, 4vw, 3.3rem);
+    line-height: 1.12;
+}
+
+.review-hero-card h1 strong {
+    color: #a5b4fc;
+}
+
+.review-hero-card p {
+    margin: 0;
+    opacity: 0.78;
+}
+
+.review-hero-progress {
+    height: 11px;
+    max-width: 620px;
+    margin-top: 22px;
+    overflow: hidden;
+    border-radius: 999px;
+    background: rgba(255, 255, 255, 0.14);
+}
+
+.review-hero-progress div {
+    height: 100%;
+    border-radius: inherit;
+    background: linear-gradient(
+        90deg,
+        #818cf8,
+        #34d399
+    );
+}
+
+.review-start-button {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    min-width: 150px;
+    min-height: 54px;
+    padding: 14px 22px;
+    border-radius: 16px;
+    background: #fff;
+    color: #111827;
+    text-decoration: none;
+    font-weight: 850;
+}
+
+.compact-dashboard-header {
+    margin-bottom: 18px;
+}
+
+@media (max-width: 720px) {
+    .review-hero-card {
+        align-items: stretch;
+        flex-direction: column;
+        gap: 20px;
+    }
+
+    .review-start-button {
+        width: 100%;
+    }
+}
+</style>
 
 {% endblock %}

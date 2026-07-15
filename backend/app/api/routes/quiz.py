@@ -4,6 +4,7 @@ from fastapi import (
     Form,
     Request,
 )
+from fastapi.responses import RedirectResponse
 from sqlalchemy.orm import Session
 
 from backend.app.core.templates import templates
@@ -11,7 +12,9 @@ from backend.app.crud.quiz import (
     generate_all_quiz_questions,
     generate_quiz_question,
     get_active_question,
+    get_review_progress,
     make_hint,
+    review_question,
     submit_answer,
 )
 from backend.app.db.database import get_db
@@ -73,6 +76,8 @@ def quiz_page(
         question,
     )
 
+    review_progress = get_review_progress(db)
+
     return templates.TemplateResponse(
         request=request,
         name="quiz.html",
@@ -80,6 +85,7 @@ def quiz_page(
             "question": question,
             "hint": hint,
             "result": None,
+            "review_progress": review_progress,
         },
     )
 
@@ -104,7 +110,26 @@ def quiz_submit(
             "question": None,
             "hint": None,
             "result": result,
+            "review_progress": get_review_progress(db),
         },
+    )
+
+
+@router.post("/quiz/review")
+def quiz_review(
+    question_id: int = Form(...),
+    rating: str = Form(...),
+    db: Session = Depends(get_db),
+):
+    review_question(
+        db=db,
+        question_id=question_id,
+        rating=rating,
+    )
+
+    return RedirectResponse(
+        url="/quiz",
+        status_code=303,
     )
 
 

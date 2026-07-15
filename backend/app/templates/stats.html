@@ -2,115 +2,298 @@
 
 {% block content %}
 
-<h1 class="page-title">통계</h1>
-<p class="page-desc">누적 학습 데이터를 분석합니다.</p>
+<div class="stats-page-header">
+    <div>
+        <h1 class="page-title">📊 SRS 학습 통계</h1>
+        <p class="page-desc">
+            단어가 아니라 각 뜻(Sense)별 복습 상태를 확인합니다.
+        </p>
+    </div>
 
-<div class="stats-grid">
+    <a href="/quiz" class="btn">
+        오늘 복습 시작
+    </a>
+</div>
+
+
+<div class="stats-grid srs-stats-grid">
     <div class="card stat-card">
-        <h3>총 단어 수</h3>
-        <p class="stat-number">{{ stats.total_words }}</p>
+        <h3>총 뜻 개수</h3>
+        <p class="stat-number">
+            {{ stats.total_senses }}
+        </p>
+        <small>단어 {{ stats.total_words }}개</small>
     </div>
 
     <div class="card stat-card">
-        <h3>암기 완료</h3>
-        <p class="stat-number">{{ stats.memorized_words }}</p>
+        <h3>지금 복습 가능</h3>
+        <p class="stat-number">
+            {{ stats.due_today }}
+        </p>
+        <small>일정이 도래한 뜻</small>
     </div>
 
     <div class="card stat-card">
-        <h3>복습 필요</h3>
-        <p class="stat-number">{{ stats.review_words }}</p>
+        <h3>오늘 복습 완료</h3>
+        <p class="stat-number">
+            {{ stats.reviewed_today }}
+        </p>
+        <small>오늘 평가한 뜻</small>
+    </div>
+
+    <div class="card stat-card">
+        <h3>미학습 뜻</h3>
+        <p class="stat-number">
+            {{ stats.new_senses }}
+        </p>
+        <small>아직 SRS 평가 없음</small>
+    </div>
+
+    <div class="card stat-card">
+        <h3>어려운 뜻</h3>
+        <p class="stat-number">
+            {{ stats.difficult_senses }}
+        </p>
+        <small>오답이 정답보다 많음</small>
+    </div>
+
+    <div class="card stat-card">
+        <h3>평균 복습 간격</h3>
+        <p class="stat-number">
+            {{ stats.average_interval }}
+        </p>
+        <small>일</small>
+    </div>
+
+    <div class="card stat-card">
+        <h3>평균 Ease</h3>
+        <p class="stat-number">
+            {{ stats.average_ease }}
+        </p>
+        <small>SRS 난이도 계수</small>
+    </div>
+
+    <div class="card stat-card">
+        <h3>연속 학습</h3>
+        <p class="stat-number">
+            🔥 {{ stats.learning_streak }}
+        </p>
+        <small>일 연속</small>
+    </div>
+
+    <div class="card stat-card">
+        <h3>정답 / 오답</h3>
+        <p class="stat-number compact-number">
+            {{ stats.total_correct }}
+            /
+            {{ stats.total_wrong }}
+        </p>
+        <small>Sense 누적 기록</small>
     </div>
 </div>
 
-<div class="card chart-card">
-    <h2>최근 7일 단어 추가 추이</h2>
-    <canvas id="dailyWordsChart"></canvas>
-</div>
 
 <div class="card chart-card">
-    <h2>많이 틀린 단어 TOP 10</h2>
-    <canvas id="wrongWordsChart"></canvas>
+    <h2>최근 7일 퀴즈 활동</h2>
+    <canvas id="dailyReviewChart"></canvas>
 </div>
 
-<div class="card chart-card">
-    <h2>많이 외운 단어 TOP 10</h2>
-    <canvas id="memorizedWordsChart"></canvas>
+<div class="stats-chart-grid">
+    <div class="card chart-card">
+        <h2>많이 틀린 뜻 TOP 10</h2>
+        <canvas id="wrongSensesChart"></canvas>
+    </div>
+
+    <div class="card chart-card">
+        <h2>많이 맞힌 뜻 TOP 10</h2>
+        <canvas id="correctSensesChart"></canvas>
+    </div>
 </div>
+
 
 <div class="card">
-    <h2>최근 추가한 단어</h2>
+    <h2>최근 추가한 뜻</h2>
 
-    {% for word in recent_words %}
-        <p>{{ word.vocabulary }}</p>
-    {% endfor %}
+    {% if recent_senses %}
+    <div class="recent-sense-list">
+        {% for sense in recent_senses %}
+        <a
+            class="recent-sense-item"
+            href="/search/result?query={{ sense.vocabulary | urlencode }}&sense_id={{ sense.sense_id }}"
+        >
+            <div>
+                <strong>{{ sense.vocabulary }}</strong>
+                <span class="pos-badge">
+                    {{ sense.part_of_speech }}
+                </span>
+            </div>
+
+            <p>{{ sense.korean_meaning }}</p>
+        </a>
+        {% endfor %}
+    </div>
+    {% else %}
+    <p class="muted">아직 저장된 뜻이 없습니다.</p>
+    {% endif %}
 </div>
+
+
+<style>
+.stats-page-header {
+    display: flex;
+    align-items: flex-start;
+    justify-content: space-between;
+    gap: 18px;
+    margin-bottom: 20px;
+}
+
+.srs-stats-grid {
+    grid-template-columns: repeat(
+        auto-fit,
+        minmax(170px, 1fr)
+    );
+}
+
+.stat-card small {
+    opacity: 0.68;
+}
+
+.compact-number {
+    font-size: clamp(1.6rem, 3vw, 2.4rem);
+}
+
+.stats-chart-grid {
+    display: grid;
+    grid-template-columns: repeat(
+        2,
+        minmax(0, 1fr)
+    );
+    gap: 20px;
+}
+
+.recent-sense-list {
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+}
+
+.recent-sense-item {
+    display: block;
+    padding: 14px;
+    border: 1px solid rgba(148, 163, 184, 0.2);
+    border-radius: 12px;
+    color: inherit;
+    text-decoration: none;
+}
+
+.recent-sense-item:hover {
+    background: rgba(148, 163, 184, 0.08);
+}
+
+.recent-sense-item > div {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+}
+
+.recent-sense-item p {
+    margin: 8px 0 0;
+    opacity: 0.78;
+}
+
+@media (max-width: 800px) {
+    .stats-page-header {
+        flex-direction: column;
+    }
+
+    .stats-chart-grid {
+        grid-template-columns: 1fr;
+    }
+}
+</style>
+
 
 <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
 
 <script>
-    const wrongLabels = {{ wrong_chart_labels | tojson }};
-    const wrongData = {{ wrong_chart_data | tojson }};
+const dailyLabels = {{ daily_labels | tojson }};
+const dailyData = {{ daily_data | tojson }};
 
-    const memorizedLabels = {{ memorized_chart_labels | tojson }};
-    const memorizedData = {{ memorized_chart_data | tojson }};
+const wrongLabels = {{ wrong_chart_labels | tojson }};
+const wrongData = {{ wrong_chart_data | tojson }};
 
-    const dailyLabels = {{ daily_labels | tojson }};
-    const dailyData = {{ daily_data | tojson }};
+const correctLabels = {{ correct_chart_labels | tojson }};
+const correctData = {{ correct_chart_data | tojson }};
 
-    new Chart(document.getElementById("dailyWordsChart"), {
+new Chart(
+    document.getElementById("dailyReviewChart"),
+    {
         type: "line",
         data: {
             labels: dailyLabels,
-            datasets: [{
-                label: "추가 단어 수",
-                data: dailyData,
-                tension: 0.3
-            }]
+            datasets: [
+                {
+                    label: "퀴즈 시도",
+                    data: dailyData,
+                    tension: 0.3,
+                },
+            ],
         },
         options: {
-            responsive: true
-        }
-    });
+            responsive: true,
+        },
+    },
+);
 
-    new Chart(document.getElementById("wrongWordsChart"), {
+new Chart(
+    document.getElementById("wrongSensesChart"),
+    {
         type: "bar",
         data: {
             labels: wrongLabels,
-            datasets: [{
-                label: "오답 횟수",
-                data: wrongData
-            }]
+            datasets: [
+                {
+                    label: "오답",
+                    data: wrongData,
+                },
+            ],
         },
         options: {
             responsive: true,
             indexAxis: "y",
             plugins: {
                 legend: {
-                    display: false
-                }
-            }
-        }
-    });
+                    display: false,
+                },
+            },
+        },
+    },
+);
 
-    new Chart(document.getElementById("memorizedWordsChart"), {
+new Chart(
+    document.getElementById("correctSensesChart"),
+    {
         type: "bar",
         data: {
-            labels: memorizedLabels,
-            datasets: [{
-                label: "정답 횟수",
-                data: memorizedData
-            }]
+            labels: correctLabels,
+            datasets: [
+                {
+                    label: "정답",
+                    data: correctData,
+                },
+            ],
         },
         options: {
             responsive: true,
             indexAxis: "y",
             plugins: {
                 legend: {
-                    display: false
-                }
-            }
-        }
-    });
+                    display: false,
+                },
+            },
+        },
+    },
+);
 </script>
 
 {% endblock %}

@@ -26,6 +26,16 @@ class WordSenseBase(BaseModel):
     display_order: int = 0
     is_primary: bool = False
 
+    priority: int = 0
+    memorize_count: int = 0
+    total_correct: int = 0
+    total_wrong: int = 0
+    ease_factor: float = 2.5
+    review_interval: int = 0
+    review_count: int = 0
+    last_reviewed_at: Optional[datetime] = None
+    next_review_at: Optional[datetime] = None
+
 
 class WordSenseCreate(WordSenseBase):
     word_id: int
@@ -52,6 +62,16 @@ class WordSenseUpdate(BaseModel):
 
     display_order: Optional[int] = None
     is_primary: Optional[bool] = None
+
+    priority: Optional[int] = None
+    memorize_count: Optional[int] = None
+    total_correct: Optional[int] = None
+    total_wrong: Optional[int] = None
+    ease_factor: Optional[float] = None
+    review_interval: Optional[int] = None
+    review_count: Optional[int] = None
+    last_reviewed_at: Optional[datetime] = None
+    next_review_at: Optional[datetime] = None
 
 
 class WordSenseRead(WordSenseBase):

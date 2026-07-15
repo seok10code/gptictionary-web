@@ -2,6 +2,7 @@ import re
 
 from sqlalchemy import func
 from sqlalchemy.orm import Session
+from datetime import datetime, timedelta
 
 from backend.app.models.quiz_log import QuizLog
 from backend.app.models.quiz_question import QuizQuestion
@@ -71,13 +72,18 @@ def get_active_question(
             Word,
             Word.id == QuizQuestion.word_id,
         )
+        .join(
+            WordSense,
+            WordSense.id == QuizQuestion.word_sense_id,
+        )
         .filter(
             QuizQuestion.is_active.is_(True),
             QuizQuestion.word_sense_id.isnot(None),
         )
         .order_by(
-            Word.priority.desc(),
-            Word.memorize_count.asc(),
+            WordSense.priority.desc(),
+            WordSense.memorize_count.asc(),
+            WordSense.total_wrong.desc(),
             func.rand(),
         )
         .first()
@@ -120,6 +126,8 @@ def get_latest_logged_sense_id(
 def get_sense_for_quiz(
     db: Session,
 ) -> WordSense | None:
+    now = datetime.now()
+
     latest_sense_id = get_latest_logged_sense_id(
         db
     )
@@ -135,6 +143,10 @@ def get_sense_for_quiz(
             Word.vocabulary != "",
             WordSense.korean_meaning.isnot(None),
             WordSense.korean_meaning != "",
+            (
+                WordSense.next_review_at.is_(None)
+                | (WordSense.next_review_at <= now)
+            ),
         )
     )
 
@@ -146,8 +158,10 @@ def get_sense_for_quiz(
     sense = (
         query
         .order_by(
-            Word.priority.desc(),
-            Word.memorize_count.asc(),
+            WordSense.next_review_at.asc(),
+            WordSense.priority.desc(),
+            WordSense.total_wrong.desc(),
+            WordSense.memorize_count.asc(),
             func.rand(),
         )
         .first()
@@ -167,10 +181,16 @@ def get_sense_for_quiz(
             Word.vocabulary != "",
             WordSense.korean_meaning.isnot(None),
             WordSense.korean_meaning != "",
+            (
+                WordSense.next_review_at.is_(None)
+                | (WordSense.next_review_at <= now)
+            ),
         )
         .order_by(
-            Word.priority.desc(),
-            Word.memorize_count.asc(),
+            WordSense.next_review_at.asc(),
+            WordSense.priority.desc(),
+            WordSense.total_wrong.desc(),
+            WordSense.memorize_count.asc(),
             func.rand(),
         )
         .first()
@@ -314,6 +334,8 @@ def generate_quiz_question_for_word(
 def get_active_question(
     db: Session,
 ) -> QuizQuestion | None:
+    now = datetime.now()
+
     latest_log = (
         db.query(QuizLog)
         .filter(
@@ -331,9 +353,17 @@ def get_active_question(
             Word,
             Word.id == QuizQuestion.word_id,
         )
+        .join(
+            WordSense,
+            WordSense.id == QuizQuestion.word_sense_id,
+        )
         .filter(
             QuizQuestion.is_active.is_(True),
             QuizQuestion.word_sense_id.isnot(None),
+            (
+                WordSense.next_review_at.is_(None)
+                | (WordSense.next_review_at <= now)
+            ),
         )
     )
 
@@ -346,8 +376,10 @@ def get_active_question(
     question = (
         query
         .order_by(
-            Word.priority.desc(),
-            Word.memorize_count.asc(),
+            WordSense.next_review_at.asc(),
+            WordSense.priority.desc(),
+            WordSense.total_wrong.desc(),
+            WordSense.memorize_count.asc(),
             func.rand(),
         )
         .first()
@@ -362,13 +394,23 @@ def get_active_question(
             Word,
             Word.id == QuizQuestion.word_id,
         )
+        .join(
+            WordSense,
+            WordSense.id == QuizQuestion.word_sense_id,
+        )
         .filter(
             QuizQuestion.is_active.is_(True),
             QuizQuestion.word_sense_id.isnot(None),
+            (
+                WordSense.next_review_at.is_(None)
+                | (WordSense.next_review_at <= now)
+            ),
         )
         .order_by(
-            Word.priority.desc(),
-            Word.memorize_count.asc(),
+            WordSense.next_review_at.asc(),
+            WordSense.priority.desc(),
+            WordSense.total_wrong.desc(),
+            WordSense.memorize_count.asc(),
             func.rand(),
         )
         .first()
@@ -510,12 +552,12 @@ def submit_answer(
     )
 
     if is_correct:
-        word.memorize_count = (
-            word.memorize_count or 0
+        sense.memorize_count = (
+            sense.memorize_count or 0
         ) + 1
 
-        word.total_correct = (
-            word.total_correct or 0
+        sense.total_correct = (
+            sense.total_correct or 0
         ) + 1
 
         question.correct_count = (
@@ -523,8 +565,8 @@ def submit_answer(
         ) + 1
 
     else:
-        word.total_wrong = (
-            word.total_wrong or 0
+        sense.total_wrong = (
+            sense.total_wrong or 0
         ) + 1
 
         question.wrong_count = (
@@ -579,3 +621,213 @@ def generate_quiz_question(
         sense=sense,
         is_active=True,
     )
+
+
+def apply_srs_review(
+    sense: WordSense,
+    rating: str,
+):
+    now = datetime.now()
+
+    rating = rating.strip().lower()
+
+    if rating == "again":
+        sense.review_interval = 0
+        sense.ease_factor = max(
+            1.3,
+            (sense.ease_factor or 2.5) - 0.2,
+        )
+        sense.next_review_at = now + timedelta(
+            minutes=10
+        )
+
+    elif rating == "hard":
+        previous_interval = (
+            sense.review_interval or 0
+        )
+
+        sense.review_interval = max(
+            1,
+            round(previous_interval * 1.2),
+        )
+
+        sense.ease_factor = max(
+            1.3,
+            (sense.ease_factor or 2.5) - 0.15,
+        )
+
+        sense.next_review_at = now + timedelta(
+            days=sense.review_interval
+        )
+
+    elif rating == "easy":
+        previous_interval = (
+            sense.review_interval or 0
+        )
+
+        if previous_interval <= 0:
+            sense.review_interval = 7
+        else:
+            sense.review_interval = max(
+                7,
+                round(
+                    previous_interval
+                    * (sense.ease_factor or 2.5)
+                    * 1.3
+                ),
+            )
+
+        sense.ease_factor = min(
+            3.0,
+            (sense.ease_factor or 2.5) + 0.15,
+        )
+
+        sense.next_review_at = now + timedelta(
+            days=sense.review_interval
+        )
+
+    else:
+        previous_interval = (
+            sense.review_interval or 0
+        )
+
+        if previous_interval <= 0:
+            sense.review_interval = 1
+        elif previous_interval == 1:
+            sense.review_interval = 3
+        else:
+            sense.review_interval = max(
+                3,
+                round(
+                    previous_interval
+                    * (sense.ease_factor or 2.5)
+                ),
+            )
+
+        sense.next_review_at = now + timedelta(
+            days=sense.review_interval
+        )
+
+    sense.review_count = (
+        sense.review_count or 0
+    ) + 1
+
+    sense.last_reviewed_at = now
+
+def review_question(
+    db: Session,
+    question_id: int,
+    rating: str,
+) -> WordSense | None:
+    normalized_rating = (
+        rating
+        .strip()
+        .lower()
+    )
+
+    allowed_ratings = {
+        "again",
+        "hard",
+        "good",
+        "easy",
+    }
+
+    if normalized_rating not in allowed_ratings:
+        return None
+
+    question = get_question_by_id(
+        db=db,
+        question_id=question_id,
+    )
+
+    if (
+        not question
+        or not question.word_sense_id
+    ):
+        return None
+
+    sense = (
+        db.query(WordSense)
+        .filter(
+            WordSense.id
+            == question.word_sense_id
+        )
+        .first()
+    )
+
+    if not sense:
+        return None
+
+    apply_srs_review(
+        sense=sense,
+        rating=normalized_rating,
+    )
+
+    db.commit()
+    db.refresh(sense)
+
+    return sense
+
+def get_review_progress(
+    db: Session,
+) -> dict:
+    now = datetime.now()
+    today_start = datetime.combine(
+        now.date(),
+        datetime.min.time(),
+    )
+    tomorrow_start = (
+        today_start
+        + timedelta(days=1)
+    )
+
+    due_count = (
+        db.query(WordSense)
+        .filter(
+            (
+                WordSense.next_review_at.is_(None)
+                | (
+                    WordSense.next_review_at
+                    <= now
+                )
+            )
+        )
+        .count()
+    )
+
+    reviewed_today = (
+        db.query(WordSense)
+        .filter(
+            WordSense.last_reviewed_at
+            >= today_start,
+            WordSense.last_reviewed_at
+            < tomorrow_start,
+        )
+        .count()
+    )
+
+    total_count = (
+        due_count
+        + reviewed_today
+    )
+
+    percent = (
+        round(
+            (
+                reviewed_today
+                / total_count
+            )
+            * 100
+        )
+        if total_count > 0
+        else 100
+    )
+
+    return {
+        "due_count": due_count,
+        "reviewed_today": reviewed_today,
+        "total_count": total_count,
+        "percent": percent,
+        "is_complete": due_count == 0,
+    }
+

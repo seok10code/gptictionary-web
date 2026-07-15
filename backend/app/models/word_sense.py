@@ -8,6 +8,7 @@ from sqlalchemy import (
     String,
     Text,
     UniqueConstraint,
+    Float
 )
 from sqlalchemy.orm import relationship
 from sqlalchemy.sql import func
@@ -115,6 +116,56 @@ class WordSense(Base):
         default=False,
     )
 
+    priority = Column(
+        Integer,
+        nullable=False,
+        default=0,
+    )
+
+    memorize_count = Column(
+        Integer,
+        nullable=False,
+        default=0,
+    )
+
+    total_correct = Column(
+        Integer,
+        nullable=False,
+        default=0,
+    )
+
+    total_wrong = Column(
+        Integer,
+        nullable=False,
+        default=0,
+    )
+    ease_factor = Column(
+        Float,
+        nullable=False,
+        default=2.5,
+    )
+
+    review_interval = Column(
+        Integer,
+        nullable=False,
+        default=0,
+    )
+
+    review_count = Column(
+        Integer,
+        nullable=False,
+        default=0,
+    )
+
+    last_reviewed_at = Column(
+        DateTime,
+        nullable=True,
+    )
+
+    next_review_at = Column(
+        DateTime,
+        nullable=True,
+    )
     created_at = Column(
         DateTime,
         server_default=func.now(),
