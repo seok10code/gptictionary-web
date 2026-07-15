@@ -1,48 +1,77 @@
-from fastapi import APIRouter, Request, Depends, Form
+from fastapi import (
+    APIRouter,
+    Depends,
+    Form,
+    Request,
+)
 from sqlalchemy.orm import Session
 
 from backend.app.core.templates import templates
-from backend.app.db.database import get_db
 from backend.app.crud.quiz import (
-    get_active_question,
-    generate_quiz_question,
     generate_all_quiz_questions,
-    submit_answer,
+    generate_quiz_question,
+    get_active_question,
     make_hint,
+    submit_answer,
 )
+from backend.app.db.database import get_db
 from backend.app.models.word import Word
+from backend.app.models.word_sense import WordSense
 
 
 router = APIRouter()
 
 
-def get_hint_for_question(db: Session, question):
-    if not question:
+def get_hint_for_question(
+    db: Session,
+    question,
+):
+    if (
+        not question
+        or not question.word_sense_id
+    ):
         return None
 
     word = (
         db.query(Word)
-        .filter(Word.id == question.word_id)
+        .filter(
+            Word.id == question.word_id
+        )
         .first()
     )
 
-    if not word:
+    sense = (
+        db.query(WordSense)
+        .filter(
+            WordSense.id
+            == question.word_sense_id
+        )
+        .first()
+    )
+
+    if not word or not sense:
         return None
 
-    return make_hint(word)
+    return make_hint(
+        word=word,
+        sense=sense,
+    )
 
 
 @router.get("/quiz")
 def quiz_page(
     request: Request,
-    db: Session = Depends(get_db)
+    db: Session = Depends(get_db),
 ):
     question = get_active_question(db)
 
     if not question:
         question = generate_quiz_question(db)
 
-    hint = get_hint_for_question(db, question)
+    hint = get_hint_for_question(
+        db,
+        question,
+    )
 
     return templates.TemplateResponse(
         request=request,
@@ -50,8 +79,8 @@ def quiz_page(
         context={
             "question": question,
             "hint": hint,
-            "result": None
-        }
+            "result": None,
+        },
     )
 
 
@@ -60,12 +89,12 @@ def quiz_submit(
     request: Request,
     question_id: int = Form(...),
     user_answer: str = Form(...),
-    db: Session = Depends(get_db)
+    db: Session = Depends(get_db),
 ):
     result = submit_answer(
         db=db,
         question_id=question_id,
-        user_answer=user_answer
+        user_answer=user_answer,
     )
 
     return templates.TemplateResponse(
@@ -74,13 +103,13 @@ def quiz_submit(
         context={
             "question": None,
             "hint": None,
-            "result": result
-        }
+            "result": result,
+        },
     )
 
 
 @router.post("/quiz/generate-all")
 def quiz_generate_all(
-    db: Session = Depends(get_db)
+    db: Session = Depends(get_db),
 ):
     return generate_all_quiz_questions(db)

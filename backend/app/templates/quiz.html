@@ -5,21 +5,22 @@
 <h1 class="page-title">🎯 퀴즈</h1>
 
 <p class="page-desc">
-    빈칸 또는 뜻을 보고 알맞은 영어 단어/표현을 입력하세요.
+    뜻 또는 빈칸을 보고 알맞은 영어 단어·표현을 입력하세요.
 </p>
+
 
 {% if result %}
 <div class="card result-card">
 
     {% if result.is_correct %}
-        <h2>✅ 정답입니다!</h2>
+    <h2>✅ 정답입니다!</h2>
     {% else %}
-        <h2>❌ 오답입니다.</h2>
+    <h2>❌ 오답입니다.</h2>
 
-        <p>
-            <strong>내 답:</strong>
-            {{ result.user_answer }}
-        </p>
+    <p>
+        <strong>내 답:</strong>
+        {{ result.user_answer }}
+    </p>
     {% endif %}
 
     <p>
@@ -28,14 +29,28 @@
     </p>
 
     <p>
-        <strong>뜻:</strong>
-        {{ result.word.definition }}
+        <strong>품사:</strong>
+        {{ result.sense.part_of_speech }}
     </p>
 
     <p>
-        <strong>예문:</strong>
-        {{ result.word.sentence }}
+        <strong>이번 문제의 뜻:</strong>
+        {{ result.sense.korean_meaning }}
     </p>
+
+    {% if result.sense.english_definition %}
+    <p>
+        <strong>영어 정의:</strong>
+        {{ result.sense.english_definition }}
+    </p>
+    {% endif %}
+
+    {% if result.sense.sentence %}
+    <p>
+        <strong>예문:</strong>
+        {{ result.sense.sentence }}
+    </p>
+    {% endif %}
 
     <p>
         <strong>Priority:</strong>
@@ -43,13 +58,23 @@
     </p>
 
     <p>
-        <strong>정답 수:</strong>
+        <strong>단어 전체 정답 수:</strong>
         {{ result.word.total_correct }}
     </p>
 
     <p>
-        <strong>오답 수:</strong>
+        <strong>단어 전체 오답 수:</strong>
         {{ result.word.total_wrong }}
+    </p>
+
+    <p>
+        <strong>이 뜻의 문제 정답 수:</strong>
+        {{ result.question.correct_count }}
+    </p>
+
+    <p>
+        <strong>이 뜻의 문제 오답 수:</strong>
+        {{ result.question.wrong_count }}
     </p>
 
     <p class="page-desc">
@@ -67,31 +92,48 @@ setTimeout(function() {
 
 
 {% if question and not result %}
-
 <div class="card result-card">
 
     <h2>문제</h2>
 
-    <p class="quiz-question" style="white-space: pre-line;">
+    <p
+        class="quiz-question"
+        style="white-space: pre-line;"
+    >
         {{ question.question }}
     </p>
 
     {% if hint %}
     <div class="quiz-hint-box">
+
+        <div class="quiz-hint-item">
+            <span>품사</span>
+            <strong>
+                {{ hint.part_of_speech }}
+            </strong>
+        </div>
+
         <div class="quiz-hint-item">
             <span>뜻</span>
-            <strong>{{ hint.definition }}</strong>
+            <strong>
+                {{ hint.definition }}
+            </strong>
         </div>
-    
+
         <div class="quiz-hint-item">
             <span>단어 수</span>
-            <strong>{{ hint.word_count }}</strong>
+            <strong>
+                {{ hint.word_count }}
+            </strong>
         </div>
-    
+
         <div class="quiz-hint-item">
             <span>첫 글자</span>
-            <strong>{{ hint.first_letter }}</strong>
+            <strong>
+                {{ hint.first_letter }}
+            </strong>
         </div>
+
     </div>
     {% endif %}
 
@@ -126,17 +168,15 @@ setTimeout(function() {
 </div>
 
 {% elif not question and not result %}
-
 <div class="card result-card">
 
     <h2>문제가 없습니다.</h2>
 
     <p>
-        아직 생성된 퀴즈가 없습니다.
+        저장된 뜻을 기준으로 생성된 퀴즈가 없습니다.
     </p>
 
 </div>
-
 {% endif %}
 
 {% endblock %}

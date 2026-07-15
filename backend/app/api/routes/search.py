@@ -1,57 +1,52 @@
-import re
 import json
-import asyncio
 import os
-from urllib.parse import quote_plus
+import re
+from urllib.parse import urlencode
 
-from fastapi import APIRouter, Request, Depends, Form, BackgroundTasks, Query
-from fastapi.responses import JSONResponse, RedirectResponse
-from sqlalchemy.orm import Session
+from fastapi import APIRouter, Depends, Form, Query, Request
+from fastapi.responses import RedirectResponse
 from openai import AsyncOpenAI
+from sqlalchemy.orm import Session
 
 from backend.app.core.templates import templates
-from backend.app.db.database import get_db, SessionLocal
-from backend.app.services.word_service import search_word
 from backend.app.crud.word import get_word_by_vocabulary
+from backend.app.crud.word_sense import (
+    get_sense_by_id,
+    get_senses_by_word_id,
+    search_senses_by_korean,
+    word_sense_to_candidate,
+)
+from backend.app.db.database import get_db
+from backend.app.services.word_service import search_word
 
 
 router = APIRouter()
 openai_client = AsyncOpenAI(api_key=os.getenv("OPENAI_API_KEY"))
 
 
-def base_context(
-    request: Request,
-    query: str = "",
-    searched_word=None,
-    word=None,
-    words=None,
-    candidates=None,
-    source=None,
-    error=None,
-):
-    return {
+def base_context(request: Request, **kwargs):
+    context = {
         "request": request,
-        "query": query,
-        "searched_word": searched_word,
-        "word": word,
-        "words": words or [],
-        "candidates": candidates or [],
-        "source": source,
-        "error": error,
+        "query": "",
+        "searched_word": None,
+        "word": None,
+        "words": [],
+        "candidates": [],
+        "source": None,
+        "error": None,
+        "selected_meaning": None,
+        "selected_part_of_speech": None,
     }
+    context.update(kwargs)
+    return context
 
 
 def is_valid_input(vocabulary: str) -> bool:
-    if not vocabulary:
-        return False
-
-    if len(vocabulary) > 80:
-        return False
-
-    if not re.match(r"^[a-zA-Z\s\-']+$", vocabulary):
-        return False
-
-    return True
+    return bool(
+        vocabulary
+        and len(vocabulary) <= 80
+        and re.match(r"^[a-zA-Z\s\-']+$", vocabulary)
+    )
 
 
 def has_korean(text: str) -> bool:
@@ -60,186 +55,146 @@ def has_korean(text: str) -> bool:
 
 def looks_like_question_or_sentence(text: str) -> bool:
     text = text.strip()
-
-    if "?" in text:
+    if "?" in text or len(text.split()) >= 6:
         return True
-
-    if len(text.split()) >= 6:
-        return True
-
-    question_keywords = [
-        "이거",
-        "내가",
-        "전에",
-        "물어본",
-        "적 있",
-        "뭐야",
-        "무슨 뜻",
-        "왜",
-        "차이",
-        "어떻게",
-        "문장",
-        "분석",
-        "해석",
-        "문법",
-    ]
-
-    return any(k in text for k in question_keywords)
+    return any(
+        keyword in text
+        for keyword in [
+            "이거", "내가", "전에", "물어본", "적 있", "뭐야",
+            "무슨 뜻", "왜", "차이", "어떻게", "문장", "분석",
+            "해석", "문법",
+        ]
+    )
 
 
 def safe_json_loads(value, default):
     if not value:
         return default
-
     try:
         return json.loads(value)
     except Exception:
         return default
 
 
-def word_to_dict(word):
+def sense_to_dict(sense):
+    return {
+        "id": sense.id,
+        "sense_key": sense.sense_key,
+        "part_of_speech": sense.part_of_speech,
+        "korean_meaning": sense.korean_meaning,
+        "english_definition": sense.english_definition,
+        "sentence": sense.sentence,
+        "usage_note": sense.usage_note,
+        "conversation": safe_json_loads(
+            sense.conversation_json,
+            [],
+        ),
+        "writing_examples": safe_json_loads(
+            sense.writing_examples_json,
+            [],
+        ),
+        "synonyms": sense.synonyms,
+        "antonyms": sense.antonyms,
+        "examples": safe_json_loads(sense.examples_json, []),
+        "search_keywords": safe_json_loads(
+            sense.search_keywords_json,
+            [],
+        ),
+        "is_primary": bool(sense.is_primary),
+        "display_order": sense.display_order,
+    }
+
+
+def word_to_dict(db: Session, word, selected_sense_id: int | None = None):
     if word is None:
         return None
+
+    senses = get_senses_by_word_id(db, word.id)
+    selected = None
+
+    if selected_sense_id:
+        selected = next(
+            (sense for sense in senses if sense.id == selected_sense_id),
+            None,
+        )
+
+    if selected:
+        senses = [selected] + [
+            sense for sense in senses if sense.id != selected.id
+        ]
+
+    primary = selected or (senses[0] if senses else None)
 
     return {
         "id": word.id,
         "vocabulary": word.vocabulary,
-        "definition": word.definition,
-        "sentence": word.sentence,
-        "synonyms": word.synonyms,
+        "definition": (
+            primary.korean_meaning if primary else word.definition
+        ),
+        "sentence": primary.sentence if primary else word.sentence,
+        "synonyms": primary.synonyms if primary else word.synonyms,
         "pronunciation": word.pronunciation,
-        "antonyms": word.antonyms,
-        "usage_note": word.usage_note,
-        "entries": safe_json_loads(word.entries_json, []),
-        "examples": safe_json_loads(word.examples_json, []),
+        "antonyms": primary.antonyms if primary else word.antonyms,
+        "usage_note": primary.usage_note if primary else word.usage_note,
+        "examples": (
+            safe_json_loads(primary.examples_json, [])
+            if primary
+            else safe_json_loads(word.examples_json, [])
+        ),
         "etymology_summary": word.etymology_summary,
+        "senses": [sense_to_dict(sense) for sense in senses],
+        "selected_sense_id": selected.id if selected else None,
     }
 
 
 async def korean_to_english_candidates(korean_query: str) -> list[dict]:
     prompt = f"""
-너는 영어 단어장 앱의 한국어 검색 후보 생성기다.
+Return 3 to 6 natural English candidates for this Korean word or
+short expression: {korean_query}
 
-사용자가 한국어 단어 또는 짧은 표현을 입력하면,
-영어로 번역될 수 있는 자연스러운 후보를 3~6개 반환한다.
-
-중요:
-- 절대 하나로 단정하지 마라.
-- 특히 한국어가 다의어이면 여러 후보를 보여줘라.
-- 사용자가 나중에 선택할 수 있도록 후보별 차이를 한국어로 설명해라.
-- word는 실제 영어 단어장 검색에 넣을 수 있는 영어 단어 또는 짧은 표현이어야 한다.
-- word에는 한국어를 넣지 마라.
-- usage에는 대표적인 collocation이나 사용 상황을 넣어라.
-- part_of_speech는 noun, verb, adjective, expression 등으로 넣어라.
-
-예시:
-거치대 ->
-stand / 받침대, 세워두는 거치대 / monitor stand, bike stand
-holder / 물건을 끼우거나 잡아주는 거치대 / phone holder, cup holder
-mount / 벽, 차량, 카메라 등에 장착하는 거치대 / camera mount, car mount
-rack / 여러 물건을 얹거나 걸어두는 선반형 거치대 / dish rack, bike rack
-
-반환 형식:
+Return JSON only:
 {{
   "candidates": [
     {{
-      "word": "stand",
-      "meaning_ko": "받침대, 세워두는 거치대",
-      "usage": "monitor stand, bike stand",
+      "word": "right",
+      "meaning_ko": "권리, 권한",
+      "usage": "human rights, legal right",
       "part_of_speech": "noun"
     }}
   ]
 }}
-
-규칙:
-- 반드시 JSON만 반환한다.
-- markdown을 쓰지 마라.
-- candidates는 최대 6개.
-- 의미가 불확실하면 그래도 가능한 후보를 넓게 제시한다.
-
-입력:
-{korean_query}
 """
-
     try:
         response = await openai_client.chat.completions.create(
             model=os.getenv("OPENAI_MODEL", "gpt-4o-mini"),
             messages=[
-                {
-                    "role": "system",
-                    "content": "Return valid JSON only.",
-                },
-                {
-                    "role": "user",
-                    "content": prompt,
-                },
+                {"role": "system", "content": "Return valid JSON only."},
+                {"role": "user", "content": prompt},
             ],
             temperature=0.2,
         )
-
-        content = response.choices[0].message.content.strip()
-        print("KOREAN CANDIDATES OPENAI RAW:", content)
-
-        data = json.loads(content)
-
-    except Exception as e:
-        print("KOREAN CANDIDATES ERROR:", repr(e))
+        data = json.loads(response.choices[0].message.content.strip())
+    except Exception as exc:
+        print("KOREAN CANDIDATES ERROR:", repr(exc))
         return []
 
-    candidates = data.get("candidates", [])
-
-    if not isinstance(candidates, list):
-        return []
-
-    cleaned_candidates = []
-
-    for candidate in candidates:
-        if not isinstance(candidate, dict):
-            continue
-
-        word = str(candidate.get("word", "")).strip().lower()
-
+    candidates = []
+    for candidate in data.get("candidates", []):
+        word = str(candidate.get("word") or "").strip().lower()
         if not is_valid_input(word):
             continue
-
-        cleaned_candidates.append(
-            {
-                "word": word,
-                "meaning_ko": str(candidate.get("meaning_ko", "")).strip(),
-                "usage": str(candidate.get("usage", "")).strip(),
-                "part_of_speech": str(candidate.get("part_of_speech", "")).strip(),
-            }
-        )
-
-    return cleaned_candidates[:6]
-
-
-def create_word_background(query: str):
-    db = SessionLocal()
-
-    try:
-        clean_query = query.strip().lower()
-
-        existing_word = get_word_by_vocabulary(
-            db=db,
-            vocabulary=clean_query,
-        )
-
-        if existing_word:
-            return
-
-        asyncio.run(
-            search_word(
-                db=db,
-                vocabulary=clean_query,
-            )
-        )
-
-    except Exception as e:
-        print("BACKGROUND WORD CREATE ERROR:", e)
-
-    finally:
-        db.close()
+        candidates.append({
+            "word": word,
+            "meaning_ko": str(
+                candidate.get("meaning_ko") or ""
+            ).strip(),
+            "usage": str(candidate.get("usage") or "").strip(),
+            "part_of_speech": str(
+                candidate.get("part_of_speech") or ""
+            ).strip(),
+            "source": "ai",
+        })
+    return candidates[:6]
 
 
 @router.get("/search")
@@ -247,15 +202,19 @@ def search_page(request: Request):
     return templates.TemplateResponse(
         request=request,
         name="search.html",
-        context=base_context(request=request),
+        context=base_context(request),
     )
 
 
 @router.post("/search")
 async def search_submit(
     request: Request,
-    background_tasks: BackgroundTasks,
     query: str = Form(...),
+    display: str | None = Form(None),
+    meaning_ko: str | None = Form(None),
+    usage: str | None = Form(None),
+    part_of_speech: str | None = Form(None),
+    sense_id: int | None = Form(None),
     db: Session = Depends(get_db),
 ):
     raw_query = query.strip()
@@ -266,22 +225,51 @@ async def search_submit(
             request=request,
             name="search.html",
             context=base_context(
-                request=request,
+                request,
                 query=raw_query,
-                error="문장이나 질문은 '질문' 탭에서 입력해주세요. 단어 검색에는 단어 또는 짧은 표현만 입력해주세요.",
+                error="문장이나 질문은 '질문' 탭에서 입력해주세요.",
             ),
         )
 
-    # 한국어 검색: 바로 영어 1개로 확정하지 않고 후보 목록 표시
-    if has_korean(raw_query):
-        candidates = await korean_to_english_candidates(raw_query)
+    if sense_id:
+        sense = get_sense_by_id(db, sense_id)
+        if sense and sense.word:
+            params = {
+                "query": sense.word.vocabulary,
+                "display": display or raw_query,
+                "sense_id": sense.id,
+            }
+            return RedirectResponse(
+                url=f"/search/result?{urlencode(params)}",
+                status_code=303,
+            )
 
+    if has_korean(raw_query):
+        db_senses = search_senses_by_korean(db, raw_query)
+
+        if db_senses:
+            candidates = [
+                word_sense_to_candidate(sense)
+                for sense in db_senses
+            ]
+            return templates.TemplateResponse(
+                request=request,
+                name="search.html",
+                context=base_context(
+                    request,
+                    query=raw_query,
+                    candidates=candidates,
+                    source="korean_db",
+                ),
+            )
+
+        candidates = await korean_to_english_candidates(raw_query)
         if not candidates:
             return templates.TemplateResponse(
                 request=request,
                 name="search.html",
                 context=base_context(
-                    request=request,
+                    request,
                     query=raw_query,
                     error="한국어 검색 후보를 만들지 못했습니다.",
                 ),
@@ -291,10 +279,10 @@ async def search_submit(
             request=request,
             name="search.html",
             context=base_context(
-                request=request,
+                request,
                 query=raw_query,
                 candidates=candidates,
-                source="korean_candidates",
+                source="korean_ai_candidates",
             ),
         )
 
@@ -303,25 +291,22 @@ async def search_submit(
             request=request,
             name="search.html",
             context=base_context(
-                request=request,
+                request,
                 query=raw_query,
                 error="올바른 영어 단어 또는 표현을 입력해주세요.",
             ),
         )
 
-    existing_word = get_word_by_vocabulary(
-        db=db,
-        vocabulary=clean_query,
-    )
+    existing_word = get_word_by_vocabulary(db, clean_query)
 
-    if existing_word:
+    if existing_word and not (meaning_ko or part_of_speech or usage):
         return templates.TemplateResponse(
             request=request,
             name="search.html",
             context=base_context(
-                request=request,
+                request,
                 query=clean_query,
-                word=word_to_dict(existing_word),
+                word=word_to_dict(db, existing_word),
                 source="db",
             ),
         )
@@ -330,57 +315,45 @@ async def search_submit(
         result = await search_word(
             db=db,
             vocabulary=clean_query,
+            requested_meaning=meaning_ko,
+            requested_part_of_speech=part_of_speech,
+            requested_usage=usage,
         )
-
-    except Exception as e:
-        print("SEARCH ERROR:", repr(e))
-
+    except Exception as exc:
+        print("SEARCH ERROR:", repr(exc))
         return templates.TemplateResponse(
             request=request,
             name="search.html",
             context=base_context(
-                request=request,
+                request,
                 query=clean_query,
                 error="단어 생성 중 오류가 발생했습니다.",
             ),
         )
 
     word = result.get("word") if result else None
-
     if not word:
         return templates.TemplateResponse(
             request=request,
             name="search.html",
             context=base_context(
-                request=request,
+                request,
                 query=clean_query,
                 error="단어를 찾지 못했습니다.",
             ),
         )
 
+    selected = result.get("selected_sense")
+    params = {"query": word.vocabulary}
+
+    if display:
+        params["display"] = display
+    if selected:
+        params["sense_id"] = selected.id
+
     return RedirectResponse(
-        url=f"/search/result?query={quote_plus(word.vocabulary)}",
+        url=f"/search/result?{urlencode(params)}",
         status_code=303,
-    )
-
-
-@router.get("/search/status")
-def search_status(
-    query: str = Query(...),
-    db: Session = Depends(get_db),
-):
-    clean_query = query.strip().lower()
-
-    word = get_word_by_vocabulary(
-        db=db,
-        vocabulary=clean_query,
-    )
-
-    return JSONResponse(
-        {
-            "ready": word is not None,
-            "query": clean_query,
-        }
     )
 
 
@@ -389,35 +362,47 @@ def search_result(
     request: Request,
     query: str = Query(...),
     display: str | None = Query(None),
+    sense_id: int | None = Query(None),
     db: Session = Depends(get_db),
 ):
     clean_query = query.strip().lower()
-    display_query = display.strip() if display else None
-
-    word = get_word_by_vocabulary(
-        db=db,
-        vocabulary=clean_query,
-    )
+    word = get_word_by_vocabulary(db, clean_query)
 
     if not word:
         return templates.TemplateResponse(
             request=request,
-            name="search_loading.html",
-            context={
-                "request": request,
-                "query": display_query or clean_query,
-                "searched_word": clean_query if display_query else None,
-            },
+            name="search.html",
+            context=base_context(
+                request,
+                query=display or clean_query,
+                error="단어를 찾지 못했습니다.",
+            ),
         )
+
+    selected_sense = (
+        get_sense_by_id(db, sense_id)
+        if sense_id
+        else None
+    )
 
     return templates.TemplateResponse(
         request=request,
         name="search.html",
         context=base_context(
-            request=request,
-            query=display_query or clean_query,
-            searched_word=clean_query if display_query else None,
-            word=word_to_dict(word),
-            source="korean_ai" if display_query else "db",
+            request,
+            query=display or clean_query,
+            searched_word=clean_query if display else None,
+            word=word_to_dict(db, word, sense_id),
+            source="korean_db" if display else "db",
+            selected_meaning=(
+                selected_sense.korean_meaning
+                if selected_sense
+                else None
+            ),
+            selected_part_of_speech=(
+                selected_sense.part_of_speech
+                if selected_sense
+                else None
+            ),
         ),
     )

@@ -2,6 +2,8 @@ from typing import Optional
 from pydantic import BaseModel
 from datetime import datetime
 
+from backend.app.schemas.word_sense import WordSenseRead
+
 
 class WordBase(BaseModel):
     vocabulary: str
@@ -9,13 +11,13 @@ class WordBase(BaseModel):
     sentence: Optional[str] = None
     synonyms: Optional[str] = None
     usage_note: Optional[str] = None
-
     entries_json: Optional[str] = None
     pronunciation: Optional[str] = None
     antonyms: Optional[str] = None
     examples_json: Optional[str] = None
     etymology_summary: Optional[str] = None
     raw_wiktionary_json: Optional[str] = None
+    corrected_from: Optional[str] = None
 
 
 class WordCreate(WordBase):
@@ -28,18 +30,17 @@ class WordUpdate(BaseModel):
     sentence: Optional[str] = None
     synonyms: Optional[str] = None
     usage_note: Optional[str] = None
-
     priority: Optional[int] = None
     memorize_count: Optional[int] = None
     total_correct: Optional[int] = None
     total_wrong: Optional[int] = None
-
     entries_json: Optional[str] = None
     pronunciation: Optional[str] = None
     antonyms: Optional[str] = None
     examples_json: Optional[str] = None
     etymology_summary: Optional[str] = None
     raw_wiktionary_json: Optional[str] = None
+    corrected_from: Optional[str] = None
 
 
 class WordRead(WordBase):
@@ -50,6 +51,7 @@ class WordRead(WordBase):
     total_wrong: int
     created_at: Optional[datetime] = None
     updated_at: Optional[datetime] = None
+    senses: list[WordSenseRead] = []
 
     class Config:
         from_attributes = True

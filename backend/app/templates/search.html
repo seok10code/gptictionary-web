@@ -5,48 +5,40 @@
 <h1 class="page-title">🔍 단어 검색</h1>
 
 <p class="page-desc">
-    DB에 있으면 저장된 데이터를 보여주고, 없으면 MCP + AI로 생성합니다.
+    저장된 뜻이 있으면 DB에서 바로 찾고, 없을 때만 MCP + AI로 생성합니다.
 </p>
 
 <div class="card search-box-card">
-
-    <form method="post" action="/search" class="search-form" onsubmit="showSearching()">
-
+    <form method="post" action="/search" class="search-form" onsubmit="showSearching(this)">
         <input
             class="input"
             type="text"
             name="query"
             value="{{ query }}"
-            placeholder="영어 또는 한국어로 검색 (예: reputation / 평판)"
+            placeholder="영어 또는 한국어로 검색 (예: right / 권리 / 올바른)"
             required
         >
-
-        <button id="search-button" class="btn" type="submit">
-            검색
-        </button>
-
+        <button class="btn search-submit-button" type="submit">검색</button>
     </form>
 
-    <p id="searching-message" class="page-desc" style="display: none; margin-top: 16px;">
-        ⏳ 답변 생성 중입니다. 처음 검색하는 단어는 몇 초 정도 걸릴 수 있어요.
+    <p id="searching-message" class="page-desc" style="display:none;margin-top:16px;">
+        ⏳ 검색 중입니다. 저장되지 않은 단어는 생성에 몇 초 걸릴 수 있어요.
     </p>
-
 </div>
 
-
 {% if candidates %}
-<div class="card detail-card" style="margin-top: 20px;">
-
+<div class="card detail-card" style="margin-top:20px;">
     <h3 class="detail-title">🔍 한국어 검색 후보: {{ query }}</h3>
 
-    <p class="muted">
-        원하는 의미에 가까운 영어 표현을 선택해주세요.
-    </p>
+    {% if source == "korean_db" %}
+    <p class="muted">이미 저장된 뜻을 찾았습니다.</p>
+    {% else %}
+    <p class="muted">저장된 뜻이 없어 AI 후보를 만들었습니다.</p>
+    {% endif %}
 
     <div class="example-card-list">
         {% for c in candidates %}
         <div class="example-card">
-
             <h3>{{ c.word }}</h3>
 
             {% if c.meaning_ko %}
@@ -54,65 +46,55 @@
             {% endif %}
 
             {% if c.usage %}
-            <small>예: {{ c.usage }}</small>
+            <small>{{ c.usage }}</small>
             {% endif %}
 
             {% if c.part_of_speech %}
-            <p class="muted" style="margin-top: 8px;">
+            <p class="muted" style="margin-top:8px;">
                 품사: {{ c.part_of_speech }}
             </p>
             {% endif %}
 
-            <form method="post" action="/search" style="margin-top: 12px;" onsubmit="showSearching()">
+            <form method="post" action="/search" style="margin-top:12px;" onsubmit="showSearching(this)">
                 <input type="hidden" name="query" value="{{ c.word }}">
-                <button class="btn" type="submit">이 뜻으로 검색</button>
-            </form>
+                <input type="hidden" name="display" value="{{ query }}">
 
+                {% if c.sense_id %}
+                <input type="hidden" name="sense_id" value="{{ c.sense_id }}">
+                {% else %}
+                <input type="hidden" name="meaning_ko" value="{{ c.meaning_ko }}">
+                <input type="hidden" name="usage" value="{{ c.usage }}">
+                <input type="hidden" name="part_of_speech" value="{{ c.part_of_speech }}">
+                {% endif %}
+
+                <button class="btn search-submit-button" type="submit">
+                    이 뜻으로 보기
+                </button>
+            </form>
         </div>
         {% endfor %}
     </div>
-
 </div>
 {% endif %}
 
-
 {% if searched_word %}
-<div class="card" style="margin-top: 20px;">
+<div class="card" style="margin-top:20px;">
     <p class="muted">
         🔍 한국어 검색:
         <strong>{{ query }}</strong>
         →
         <strong>{{ searched_word }}</strong>
+
+        {% if selected_meaning %}
+        · 선택한 뜻: <strong>{{ selected_meaning }}</strong>
+        {% endif %}
+
+        {% if selected_part_of_speech %}
+        · 품사: <strong>{{ selected_part_of_speech }}</strong>
+        {% endif %}
     </p>
 </div>
 {% endif %}
-
-
-{% if words %}
-<div class="card detail-card">
-
-    <h3 class="detail-title">검색 결과</h3>
-
-    <div class="example-card-list">
-        {% for w in words %}
-        <a
-            href="/search/result?query={{ w.vocabulary }}"
-            class="example-card"
-            style="text-decoration:none;color:inherit;"
-        >
-            <h3>{{ w.vocabulary }}</h3>
-            <p>{{ w.definition }}</p>
-
-            {% if w.sentence %}
-            <small>{{ w.sentence }}</small>
-            {% endif %}
-        </a>
-        {% endfor %}
-    </div>
-
-</div>
-{% endif %}
-
 
 {% if error %}
 <div class="card error-card">
@@ -121,173 +103,391 @@
 </div>
 {% endif %}
 
-
 {% if word %}
-
 <div class="card word-hero-card">
-
     <div class="word-hero-top">
         <div>
             <h2 class="word-hero-title">
-                <span data-speak="{{ word.vocabulary }}">🔊 {{ word.vocabulary }}</span>
+                <span data-speak="{{ word.vocabulary }}">
+                    🔊 {{ word.vocabulary }}
+                </span>
             </h2>
 
             {% if word.pronunciation %}
-            <div class="word-pronunciation">
-                {{ word.pronunciation }}
-            </div>
+            <div class="word-pronunciation">{{ word.pronunciation }}</div>
             {% endif %}
         </div>
     </div>
-
-    <div class="word-hero-meaning">
-        {{ word.definition or "-" }}
-    </div>
-
-    {% if word.sentence %}
-    <div class="word-hero-sentence">
-        <span data-speak="{{ word.sentence }}">🔊 “{{ word.sentence }}”</span>
-    </div>
-    {% endif %}
-
 </div>
 
+{% if word.senses %}
+{% set primary_sense = word.senses[0] %}
 
-{% if word.entries %}
 <div class="card detail-card">
+    <h3 class="detail-title">선택한 뜻</h3>
 
-    <h3 class="detail-title">품사별 정의</h3>
+    <div class="pos-card selected-sense-card">
+        <div class="pos-card-header">
+            <span class="pos-badge">{{ primary_sense.part_of_speech }}</span>
+            <span class="pos-korean">{{ primary_sense.korean_meaning }}</span>
+        </div>
 
-    <div class="pos-card-list">
-        {% for entry in word.entries %}
-        <div class="pos-card">
+        {% if primary_sense.english_definition %}
+        <p class="sense-definition">{{ primary_sense.english_definition }}</p>
+        {% endif %}
 
-            <div class="pos-card-header">
-                <span class="pos-badge">{{ entry.part_of_speech }}</span>
+        {% if primary_sense.synonyms or primary_sense.antonyms %}
+        <div class="tag-grid" style="margin-top:18px;">
+            <div>
+                <h4>동의어</h4>
 
-                {% if entry.korean_meaning and entry.korean_meaning != word.definition %}
-                <span class="pos-korean">{{ entry.korean_meaning }}</span>
+                {% if primary_sense.synonyms %}
+                <div class="tag-wrap">
+                    {% for synonym in primary_sense.synonyms.split(",") %}
+                        {% if synonym.strip() %}
+                        <span class="word-tag" data-speak="{{ synonym.strip() }}">
+                            🔊 {{ synonym.strip() }}
+                        </span>
+                        {% endif %}
+                    {% endfor %}
+                </div>
+                {% else %}
+                <p class="muted">-</p>
                 {% endif %}
             </div>
 
-            {% if entry.definitions %}
-            <ul class="clean-list">
-                {% for definition in entry.definitions %}
-                <li>{{ definition }}</li>
-                {% endfor %}
-            </ul>
-            {% endif %}
+            <div>
+                <h4>반의어</h4>
 
+                {% if primary_sense.antonyms %}
+                <div class="tag-wrap">
+                    {% for antonym in primary_sense.antonyms.split(",") %}
+                        {% if antonym.strip() %}
+                        <span class="word-tag danger-tag" data-speak="{{ antonym.strip() }}">
+                            🔊 {{ antonym.strip() }}
+                        </span>
+                        {% endif %}
+                    {% endfor %}
+                </div>
+                {% else %}
+                <p class="muted">-</p>
+                {% endif %}
+            </div>
         </div>
-        {% endfor %}
-    </div>
+        {% endif %}
 
-</div>
-{% endif %}
+        {% if primary_sense.examples %}
+        <div style="margin-top:18px;">
+            <h4>예문</h4>
 
-
-{% if word.synonyms or word.antonyms %}
-<div class="card detail-card">
-
-    <div class="tag-grid">
-
-        <div>
-            <h3 class="detail-title">동의어</h3>
-
-            {% if word.synonyms %}
-            <div class="tag-wrap">
-                {% for synonym in word.synonyms.split(",") %}
-                    {% if synonym.strip() %}
-                    <span class="word-tag" data-speak="{{ synonym.strip() }}">
-                        🔊 {{ synonym.strip() }}
-                    </span>
-                    {% endif %}
+            <div class="example-card-list">
+                {% for example in primary_sense.examples %}
+                <div class="example-card">
+                    <span data-speak="{{ example }}">🔊 {{ example }}</span>
+                </div>
                 {% endfor %}
             </div>
-            {% else %}
-            <p class="muted">-</p>
-            {% endif %}
         </div>
+        {% endif %}
 
-        <div>
-            <h3 class="detail-title">반의어</h3>
+        {% if primary_sense.usage_note %}
+        <div style="margin-top:18px;">
+            <h4>Usage Note</h4>
+            <div class="usage-note-clean">
+                {{ primary_sense.usage_note }}
+            </div>
+        </div>
+        {% endif %}
 
-            {% if word.antonyms %}
-            <div class="tag-wrap">
-                {% for antonym in word.antonyms.split(",") %}
-                    {% if antonym.strip() %}
-                    <span class="word-tag danger-tag" data-speak="{{ antonym.strip() }}">
-                        🔊 {{ antonym.strip() }}
+        {% if primary_sense.conversation %}
+        <div class="learning-section" style="margin-top:18px;">
+            <h4>💬 실제 대화</h4>
+
+            <div class="conversation-card">
+                {% for turn in primary_sense.conversation %}
+                <p>
+                    <strong>{{ turn.speaker }}:</strong>
+                    <span data-speak="{{ turn.text }}">
+                        {{ turn.text }}
                     </span>
-                    {% endif %}
+                </p>
                 {% endfor %}
             </div>
-            {% else %}
-            <p class="muted">-</p>
-            {% endif %}
         </div>
+        {% endif %}
 
+        {% if primary_sense.writing_examples %}
+        <div class="learning-section" style="margin-top:18px;">
+            <h4>📝 글쓰기 예문</h4>
+
+            <div class="example-card-list">
+                {% for example in primary_sense.writing_examples %}
+                <div class="example-card">
+                    <span data-speak="{{ example }}">
+                        🔊 {{ example }}
+                    </span>
+                </div>
+                {% endfor %}
+            </div>
+        </div>
+        {% endif %}
     </div>
-
 </div>
-{% endif %}
 
-
-{% if word.examples %}
+{% if word.senses|length > 1 %}
 <div class="card detail-card">
+    <h3 class="detail-title">다른 뜻</h3>
 
-    <h3 class="detail-title">예문</h3>
+    <div class="pos-card-list">
+        {% for sense in word.senses[1:] %}
+        <details class="pos-card sense-summary-card">
+            <summary class="sense-summary">
+                <div class="sense-summary-main">
+                    <div class="pos-card-header">
+                        <span class="pos-badge">{{ sense.part_of_speech }}</span>
+                        <span class="pos-korean">{{ sense.korean_meaning }}</span>
+                    </div>
 
-    <div class="example-card-list">
-        {% for example in word.examples %}
-        <div class="example-card">
-            <span data-speak="{{ example }}">🔊 {{ example }}</span>
-        </div>
+                    {% if sense.english_definition %}
+                    <p class="muted sense-summary-definition">
+                        {{ sense.english_definition }}
+                    </p>
+                    {% endif %}
+                </div>
+
+                <span class="sense-toggle-icon">펼치기</span>
+            </summary>
+
+            <div class="sense-expanded-content">
+                {% if sense.synonyms or sense.antonyms %}
+                <div class="tag-grid" style="margin-top:16px;">
+                    <div>
+                        <h4>동의어</h4>
+
+                        {% if sense.synonyms %}
+                        <div class="tag-wrap">
+                            {% for synonym in sense.synonyms.split(",") %}
+                                {% if synonym.strip() %}
+                                <span class="word-tag" data-speak="{{ synonym.strip() }}">
+                                    🔊 {{ synonym.strip() }}
+                                </span>
+                                {% endif %}
+                            {% endfor %}
+                        </div>
+                        {% else %}
+                        <p class="muted">-</p>
+                        {% endif %}
+                    </div>
+
+                    <div>
+                        <h4>반의어</h4>
+
+                        {% if sense.antonyms %}
+                        <div class="tag-wrap">
+                            {% for antonym in sense.antonyms.split(",") %}
+                                {% if antonym.strip() %}
+                                <span class="word-tag danger-tag" data-speak="{{ antonym.strip() }}">
+                                    🔊 {{ antonym.strip() }}
+                                </span>
+                                {% endif %}
+                            {% endfor %}
+                        </div>
+                        {% else %}
+                        <p class="muted">-</p>
+                        {% endif %}
+                    </div>
+                </div>
+                {% endif %}
+
+                {% if sense.examples %}
+                <div style="margin-top:16px;">
+                    <h4>예문</h4>
+
+                    <div class="example-card-list">
+                        {% for example in sense.examples %}
+                        <div class="example-card">
+                            <span data-speak="{{ example }}">🔊 {{ example }}</span>
+                        </div>
+                        {% endfor %}
+                    </div>
+                </div>
+                {% endif %}
+
+                {% if sense.usage_note %}
+                <div style="margin-top:16px;">
+                    <h4>Usage Note</h4>
+                    <div class="usage-note-clean">
+                        {{ sense.usage_note }}
+                    </div>
+                </div>
+                {% endif %}
+
+                {% if sense.conversation %}
+                <div class="learning-section" style="margin-top:16px;">
+                    <h4>💬 실제 대화</h4>
+
+                    <div class="conversation-card">
+                        {% for turn in sense.conversation %}
+                        <p>
+                            <strong>{{ turn.speaker }}:</strong>
+                            <span data-speak="{{ turn.text }}">
+                                {{ turn.text }}
+                            </span>
+                        </p>
+                        {% endfor %}
+                    </div>
+                </div>
+                {% endif %}
+
+                {% if sense.writing_examples %}
+                <div class="learning-section" style="margin-top:16px;">
+                    <h4>📝 글쓰기 예문</h4>
+
+                    <div class="example-card-list">
+                        {% for example in sense.writing_examples %}
+                        <div class="example-card">
+                            <span data-speak="{{ example }}">
+                                🔊 {{ example }}
+                            </span>
+                        </div>
+                        {% endfor %}
+                    </div>
+                </div>
+                {% endif %}
+            </div>
+        </details>
         {% endfor %}
     </div>
-
 </div>
 {% endif %}
 
-
-{% if word.usage_note %}
+{% else %}
 <div class="card detail-card">
+    <h3 class="detail-title">뜻</h3>
 
-    <h3 class="detail-title">Usage Note</h3>
+    <div class="pos-card">
+        <div class="word-hero-meaning">{{ word.definition or "-" }}</div>
 
-    <div class="usage-note-clean">
-        {{ word.usage_note }}
+        {% if word.sentence %}
+        <div class="example-card" style="margin-top:14px;">
+            <span data-speak="{{ word.sentence }}">
+                🔊 {{ word.sentence }}
+            </span>
+        </div>
+        {% endif %}
     </div>
-
 </div>
 {% endif %}
-
 
 {% if word.etymology_summary %}
 <div class="card detail-card">
-
     <h3 class="detail-title">어원</h3>
-
     <p class="etymology-text">{{ word.etymology_summary }}</p>
-
 </div>
 {% endif %}
-
 {% endif %}
 
+<style>
+.selected-sense-card {
+    border: 2px solid rgba(99, 102, 241, 0.65);
+}
+
+.sense-summary-card {
+    overflow: hidden;
+}
+
+.sense-summary {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 16px;
+    cursor: pointer;
+    list-style: none;
+}
+
+.sense-summary::-webkit-details-marker {
+    display: none;
+}
+
+.sense-summary-main {
+    flex: 1;
+    min-width: 0;
+}
+
+.sense-summary-definition {
+    margin-top: 10px;
+    margin-bottom: 0;
+}
+
+.sense-toggle-icon {
+    flex-shrink: 0;
+    font-size: 0.9rem;
+    opacity: 0.7;
+}
+
+details[open] .sense-toggle-icon {
+    font-size: 0;
+}
+
+details[open] .sense-toggle-icon::after {
+    content: "접기";
+    font-size: 0.9rem;
+}
+
+.sense-expanded-content {
+    margin-top: 18px;
+    padding-top: 18px;
+    border-top: 1px solid rgba(148, 163, 184, 0.2);
+}
+
+.conversation-card {
+    padding: 16px;
+    border: 1px solid rgba(148, 163, 184, 0.2);
+    border-radius: 12px;
+    background: rgba(148, 163, 184, 0.06);
+}
+
+.conversation-card p {
+    margin: 0;
+    line-height: 1.65;
+}
+
+.conversation-card p + p {
+    margin-top: 10px;
+}
+
+.learning-section h4 {
+    margin-bottom: 10px;
+}
+
+@media (max-width: 768px) {
+    .sense-summary {
+        align-items: flex-start;
+    }
+
+    .sense-toggle-icon {
+        padding-top: 4px;
+    }
+}
+</style>
 
 <script>
-function showSearching() {
+function showSearching(form) {
     const msg = document.getElementById("searching-message");
-    const btn = document.getElementById("search-button");
 
     if (msg) {
         msg.style.display = "block";
     }
 
+    if (!form) {
+        return;
+    }
+
+    const btn = form.querySelector("button[type='submit']");
+
     if (btn) {
         btn.disabled = true;
-        btn.innerText = "생성 중...";
+        btn.innerText = "검색 중...";
     }
 }
 </script>

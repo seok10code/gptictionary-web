@@ -76,6 +76,13 @@ const sentenceAudioToggle = document.getElementById(
 );
 const fadeToggle = document.getElementById("fade-toggle");
 
+const englishDefinitionElement = document.getElementById(
+    "english-definition"
+);
+
+const englishDefinitionSection = document.getElementById(
+    "english-definition-section"
+);
 const modeNames = {
     random: "랜덤",
     priority: "우선순위",
@@ -158,6 +165,7 @@ function formatUsageNote(text) {
 function showAllSections() {
     const sections = [
         answerBlock,
+        englishDefinitionSection,
         exampleSection,
         synonymsSection,
         usageSection,
@@ -176,7 +184,8 @@ function showAllSections() {
 
 function renderCurrentWord() {
     const currentWord = getCurrentWord();
-
+    const englishDefinition =
+    (currentWord.english_definition || "").trim();
     if (!currentWord) {
         return;
     }
@@ -213,6 +222,11 @@ function renderCurrentWord() {
     synonymsSection.hidden = !synonyms;
     usageSection.hidden = !usageNote;
 
+    englishDefinitionElement.textContent =
+    englishDefinition;
+
+    englishDefinitionSection.hidden =
+    !englishDefinition;
     recallPrompt.textContent =
         `What does "${vocabulary}" mean?`;
 

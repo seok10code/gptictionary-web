@@ -17,23 +17,28 @@ client = OpenAI(
 )
 
 
-async def generate_word_info(vocabulary: str) -> dict:
+async def generate_word_info(
+    vocabulary: str,
+    requested_meaning: str | None = None,
+    requested_part_of_speech: str | None = None,
+    requested_usage: str | None = None,
+) -> dict:
     original_vocabulary = vocabulary.strip().lower()
     corrected_from = ""
     correction_korean_meaning = ""
 
-    correction = correct_word_candidate(original_vocabulary)
+    correction = correct_word_candidate(
+        original_vocabulary
+    )
 
     if correction.get("found"):
-        corrected_word = correction.get(
-            "correct_word",
-            "",
+        corrected_word = str(
+            correction.get("correct_word") or ""
         ).strip().lower()
 
-        correction_korean_meaning = correction.get(
-            "korean_meaning",
-            "",
-        )
+        correction_korean_meaning = str(
+            correction.get("korean_meaning") or ""
+        ).strip()
 
         if corrected_word:
             vocabulary = corrected_word
@@ -42,11 +47,12 @@ async def generate_word_info(vocabulary: str) -> dict:
                 corrected_from = original_vocabulary
         else:
             vocabulary = original_vocabulary
-
     else:
         vocabulary = original_vocabulary
 
-    wiktionary_data = await lookup_wiktionary(vocabulary)
+    wiktionary_data = await lookup_wiktionary(
+        vocabulary
+    )
 
     wiktionary_context = json.dumps(
         wiktionary_data,
@@ -54,120 +60,228 @@ async def generate_word_info(vocabulary: str) -> dict:
         indent=2,
     )
 
-    prompt = f"""
-You are an expert English teacher for Korean learners.
+    requested_meaning = (
+        requested_meaning or ""
+    ).strip()
 
-The input may be:
-- a single English word
-- an idiom
-- a phrase
-- a phrasal verb
-- a collocation
-- a slightly incorrect expression that should be corrected to a natural standard form
+    requested_part_of_speech = (
+        requested_part_of_speech or ""
+    ).strip()
+
+    requested_usage = (
+        requested_usage or ""
+    ).strip()
+
+    selected_context = ""
+
+    if (
+        requested_meaning
+        or requested_part_of_speech
+        or requested_usage
+    ):
+        selected_context = f"""
+The user selected a specific sense from a Korean search.
+
+Selected Korean meaning:
+{requested_meaning or "not provided"}
+
+Selected part of speech:
+{requested_part_of_speech or "not provided"}
+
+Selected usage:
+{requested_usage or "not provided"}
+
+The selected sense MUST be entries[0].
+Still include the other major useful senses.
+"""
+
+    prompt = f"""
+You are an expert English dictionary writer
+for Korean learners.
+
+Input:
+{original_vocabulary}
+
+Canonical vocabulary:
+{vocabulary}
+
+{selected_context}
 
 Return ONLY valid JSON.
 Do not use markdown.
 
-Input: {original_vocabulary}
-Canonical vocabulary to explain: {vocabulary}
-
-Important:
-- If the input is a common expression or phrase, it is valid.
-- If Wiktionary data is missing or weak, use your own English knowledge.
-- If the input is unnatural but clearly intended, explain the corrected canonical expression.
-- Example: "pinch penny" should become "pinch pennies".
-- Example: "awash with" is valid.
-- Example: "come out" is valid.
-
-Return this exact JSON structure:
+Return this exact structure:
 
 {{
   "valid": true,
   "vocabulary": "{vocabulary}",
-  "definition": "대표 한국어 뜻",
-  "entries": [
-    {{
-      "part_of_speech": "Expression",
-      "korean_meaning": "한국어 뜻",
-      "definitions": [
-        "Short English definition"
-      ]
-    }}
-  ],
-  "sentence": "Natural English example sentence",
-  "pronunciation": "IPA pronunciation if useful, otherwise empty string",
+  "definition": "Korean meaning of entries[0]",
+  "sentence": "Representative sentence of entries[0]",
+  "pronunciation": "IPA or empty string",
   "synonyms": [
-    "synonym1",
-    "synonym2",
-    "synonym3"
+    "top-level synonym from entries[0]"
   ],
   "antonyms": [
-    "antonym1",
-    "antonym2"
+    "top-level antonym from entries[0]"
   ],
   "examples": [
-    "Useful English example 1",
-    "Useful English example 2"
+    "top-level example 1 from entries[0]",
+    "top-level example 2 from entries[0]"
   ],
-  "etymology_summary": "어원이 유용하면 한국어로 짧게, 아니면 빈 문자열",
-  "usage_note": "이 표현은 ... 뉘앙스로 쓰입니다.\\n\\n💬 실제 대화\\n\\nA: English sentence\\nB: English sentence\\n\\n📝 글쓰기 예문\\n\\nFormal writing example sentence 1.\\n\\nFormal writing example sentence 2."
+  "usage_note": "Short Korean usage note from entries[0]",
+  "etymology_summary": "짧은 한국어 어원 또는 빈 문자열",
+  "entries": [
+    {{
+      "sense_key": "stable_short_key",
+      "part_of_speech": "Noun",
+      "korean_meaning": "권리, 권한",
+      "definitions": [
+        "A legal or moral entitlement."
+      ],
+      "sentence": "Everyone has the right to speak freely.",
+      "synonyms": [
+        "entitlement",
+        "privilege"
+      ],
+      "antonyms": [
+        "restriction"
+      ],
+      "examples": [
+        "Everyone has the right to a fair trial.",
+        "Workers demanded the right to organize."
+      ],
+      "usage_note": "이 표현은 권리나 권한을 의미할 때 사용됩니다.",
+      "conversation": [
+        {{
+          "speaker": "A",
+          "text": "Do all citizens have the right to vote?"
+        }},
+        {{
+          "speaker": "B",
+          "text": "Yes, voting is a fundamental right."
+        }}
+      ],
+      "writing_examples": [
+        "Every citizen has the right to receive an education.",
+        "Freedom of speech is widely regarded as a fundamental right."
+      ],
+      "search_keywords": [
+        "권리",
+        "권한",
+        "자격"
+      ]
+    }}
+  ]
 }}
 
 Rules:
-- valid must be true if the input can be understood as a useful English word, phrase, idiom, or expression.
-- definition must be Korean.
-- korean_meaning must be Korean.
-- definitions must be English.
-- usage_note explanation must be Korean.
 
-- Do NOT simply copy Wiktionary's synonyms or antonyms.
-- If Wiktionary synonyms are empty, generate useful synonyms yourself.
-- synonyms must contain 3 to 6 useful English synonyms whenever possible.
-- antonyms must contain 1 to 4 useful English antonyms whenever possible.
-- Near-synonyms are acceptable if exact synonyms are limited.
-- Only return an empty synonyms list if the word is a proper noun or genuinely has no meaningful synonym.
-- Only return an empty antonyms list if no natural opposite exists.
+- Include every major learner-useful sense.
+- Separate senses by part of speech and actual meaning.
+- Never merge unrelated meanings.
+- Do not duplicate equivalent senses.
+The entries array MUST contain ALL major learner-useful senses.
 
-- A and B conversation lines must be English only.
-- Do not use Korean in A or B lines.
-- usage_note must contain line breaks.
-- Do not include wiki markup like {{}}, [[]], <ref>, or CSS.
-- Keep everything concise.
-- usage_note must include exactly ONE short real-life conversation.
-- usage_note must include exactly TWO formal writing example sentences.
-- Formal writing examples must be English only.
-- Do not create a second conversation.
+- Never return only one entry when the word has multiple common meanings.
+- For a common polysemous word, return at least 3 entries.
+- Normally return between 3 and 8 entries.
+- Return one entry only when the word genuinely has only one common meaning.
+
+For the word "right", entries MUST include at least these distinct senses:
+1. Noun: 권리, 권한
+2. Adjective: 옳은, 올바른, 정확한
+3. Adjective: 오른쪽의
+4. Noun: 오른쪽, 오른쪽 방향
+5. Adverb: 오른쪽으로
+
+Do not omit these senses for "right".
+
+Every entry MUST contain all of these fields:
+
+- sense_key
+- part_of_speech
+- korean_meaning
+- definitions
+- sentence
+- synonyms
+- antonyms
+- examples
+- usage_note
+- conversation
+- writing_examples
+- search_keywords
+
+Required content rules:
+
+- sentence must be a complete English sentence.
+- definitions must contain at least one English definition.
+- examples must contain exactly two English sentences.
+- conversation must contain exactly two objects.
+- conversation[0].speaker must be "A".
+- conversation[1].speaker must be "B".
+- Both conversation text values must be complete English sentences.
+- writing_examples must contain exactly two complete English sentences.
+- usage_note must be a short Korean explanation only.
+- Do not put dialogue or writing examples inside usage_note.
+- synonyms should normally contain 2 to 6 items.
+- antonyms should normally contain 1 to 4 items.
+- If there is no exact antonym,
+  use the closest meaningful contrast.
+- Never return empty conversation or writing_examples arrays.
+- Never return an empty sentence.
+- Every example and dialogue must match only that sense.
+- Korean meanings and usage notes must be natural Korean.
+- English definitions, examples, dialogue,
+  and writing examples must be English.
+- sense_key must be stable, short,
+  lowercase, and underscore-separated.
+- When a selected sense is provided,
+  it must be entries[0].
+- All top-level learning fields must mirror entries[0].
 
 Wiktionary data:
+
 {wiktionary_context}
 """
 
     try:
         response = client.chat.completions.create(
-            model="gpt-4o-mini",
+            model=os.getenv(
+                "OPENAI_MODEL",
+                "gpt-4o-mini",
+            ),
             response_format={
                 "type": "json_object",
             },
             messages=[
                 {
                     "role": "system",
-                    "content": "Return valid JSON only.",
+                    "content": (
+                        "Return valid JSON only. "
+                        "Every entry must contain non-empty "
+                        "conversation and writing_examples."
+                    ),
                 },
                 {
                     "role": "user",
                     "content": prompt,
                 },
             ],
-            temperature=0.2,
+            temperature=0.05,
         )
 
-        content = response.choices[0].message.content.strip()
-        result = json.loads(content)
+        result = json.loads(
+            response
+            .choices[0]
+            .message
+            .content
+            .strip()
+        )
 
-    except Exception as e:
+    except Exception as exc:
         print(
             "OPENAI WORD GENERATION ERROR:",
-            repr(e),
+            repr(exc),
         )
 
         return {
@@ -179,17 +293,341 @@ Wiktionary data:
             "valid": False,
         }
 
+    entries = result.get("entries")
+
+    if not isinstance(entries, list) or not entries:
+        return {
+            "valid": False,
+        }
+
+    minimum_entry_count = 1
+
+    if vocabulary == "right":
+        minimum_entry_count = 5
+    elif len(wiktionary_data or {}) > 0:
+        minimum_entry_count = 2
+
+    if len(entries) < minimum_entry_count:
+        print(
+            "INSUFFICIENT WORD SENSES:",
+            vocabulary,
+            "count=",
+            len(entries),
+        )
+
+        retry_prompt = f"""
+    The previous result returned too few dictionary senses.
+
+    Word:
+    {vocabulary}
+
+    Previous entries:
+    {json.dumps(entries, ensure_ascii=False, indent=2)}
+
+    Create a corrected COMPLETE entries array.
+
+    Requirements:
+    - Include all major learner-useful meanings.
+    - Separate meanings by part of speech and actual meaning.
+    - Return between 3 and 8 distinct entries for a common polysemous word.
+    - Every entry must contain:
+    sense_key,
+    part_of_speech,
+    korean_meaning,
+    definitions,
+    sentence,
+    synonyms,
+    antonyms,
+    exactly 2 examples,
+    usage_note,
+    conversation with exactly A and B,
+    exactly 2 writing_examples,
+    search_keywords.
+
+    For "right", include at least:
+    1. Noun: 권리, 권한
+    2. Adjective: 옳은, 올바른, 정확한
+    3. Adjective: 오른쪽의
+    4. Noun: 오른쪽, 오른쪽 방향
+    5. Adverb: 오른쪽으로
+
+    Return JSON only in this form:
+
+    {{
+    "entries": [
+        {{
+        "sense_key": "...",
+        "part_of_speech": "...",
+        "korean_meaning": "...",
+        "definitions": ["..."],
+        "sentence": "...",
+        "synonyms": ["..."],
+        "antonyms": ["..."],
+        "examples": ["...", "..."],
+        "usage_note": "...",
+        "conversation": [
+            {{
+            "speaker": "A",
+            "text": "..."
+            }},
+            {{
+            "speaker": "B",
+            "text": "..."
+            }}
+        ],
+        "writing_examples": ["...", "..."],
+        "search_keywords": ["..."]
+        }}
+    ]
+    }}
+    """
+
+        try:
+            retry_response = client.chat.completions.create(
+                model=os.getenv(
+                    "OPENAI_MODEL",
+                    "gpt-4o-mini",
+                ),
+                response_format={
+                    "type": "json_object",
+                },
+                messages=[
+                    {
+                        "role": "system",
+                        "content": (
+                            "Return valid JSON only. "
+                            "Generate all major dictionary senses."
+                        ),
+                    },
+                    {
+                        "role": "user",
+                        "content": retry_prompt,
+                    },
+                ],
+                temperature=0.05,
+            )
+
+            retry_result = json.loads(
+                retry_response
+                .choices[0]
+                .message
+                .content
+                .strip()
+            )
+
+            retry_entries = retry_result.get(
+                "entries"
+            )
+
+            if (
+                isinstance(retry_entries, list)
+                and len(retry_entries) > len(entries)
+            ):
+                entries = retry_entries
+                result["entries"] = retry_entries
+
+        except Exception as exc:
+            print(
+                "WORD SENSE RETRY ERROR:",
+                repr(exc),
+            )
+
+    cleaned_entries = []
+
+    for index, raw_entry in enumerate(entries):
+        if not isinstance(raw_entry, dict):
+            continue
+
+        entry = dict(raw_entry)
+
+        sentence = str(
+            entry.get("sentence") or ""
+        ).strip()
+
+        examples = entry.get("examples")
+
+        if not isinstance(examples, list):
+            examples = []
+
+        examples = [
+            str(value).strip()
+            for value in examples
+            if str(value).strip()
+        ]
+
+        if not sentence and examples:
+            sentence = examples[0]
+
+        if not sentence:
+            sentence = (
+                f"This example shows how to use "
+                f"{vocabulary} naturally."
+            )
+
+        while len(examples) < 2:
+            examples.append(sentence)
+
+        entry["sentence"] = sentence
+        entry["examples"] = examples[:2]
+
+        conversation = entry.get("conversation")
+
+        if not isinstance(conversation, list):
+            conversation = []
+
+        valid_conversation = []
+
+        for turn in conversation:
+            if not isinstance(turn, dict):
+                continue
+
+            speaker = str(
+                turn.get("speaker") or ""
+            ).strip().upper()
+
+            turn_text = str(
+                turn.get("text") or ""
+            ).strip()
+
+            if (
+                speaker in {"A", "B"}
+                and turn_text
+            ):
+                valid_conversation.append(
+                    {
+                        "speaker": speaker,
+                        "text": turn_text,
+                    }
+                )
+
+        if len(valid_conversation) < 2:
+            valid_conversation = [
+                {
+                    "speaker": "A",
+                    "text": (
+                        f"Can you give me an example "
+                        f"using {vocabulary}?"
+                    ),
+                },
+                {
+                    "speaker": "B",
+                    "text": sentence,
+                },
+            ]
+
+        entry["conversation"] = (
+            valid_conversation[:2]
+        )
+
+        writing_examples = entry.get(
+            "writing_examples"
+        )
+
+        if not isinstance(
+            writing_examples,
+            list,
+        ):
+            writing_examples = []
+
+        writing_examples = [
+            str(value).strip()
+            for value in writing_examples
+            if str(value).strip()
+        ]
+
+        fallback_values = (
+            examples
+            + [sentence]
+        )
+
+        for fallback in fallback_values:
+            if len(writing_examples) >= 2:
+                break
+
+            if fallback not in writing_examples:
+                writing_examples.append(
+                    fallback
+                )
+
+        while len(writing_examples) < 2:
+            writing_examples.append(sentence)
+
+        entry["writing_examples"] = (
+            writing_examples[:2]
+        )
+
+        entry["sense_key"] = str(
+            entry.get("sense_key")
+            or f"sense_{index + 1}"
+        ).strip()
+
+        entry["part_of_speech"] = str(
+            entry.get("part_of_speech")
+            or "Unknown"
+        ).strip()
+
+        entry["korean_meaning"] = str(
+            entry.get("korean_meaning")
+            or correction_korean_meaning
+            or ""
+        ).strip()
+
+        entry["usage_note"] = str(
+            entry.get("usage_note") or ""
+        ).strip()
+
+        cleaned_entries.append(entry)
+
+    if not cleaned_entries:
+        return {
+            "valid": False,
+        }
+
+    result["entries"] = cleaned_entries
+
+    first = cleaned_entries[0]
+
+    result["definition"] = (
+        str(result.get("definition") or "").strip()
+        or first.get("korean_meaning")
+        or correction_korean_meaning
+        or ""
+    )
+
+    result["sentence"] = (
+        str(result.get("sentence") or "").strip()
+        or first.get("sentence")
+        or ""
+    )
+
+    result["synonyms"] = (
+        result.get("synonyms")
+        or first.get("synonyms")
+        or []
+    )
+
+    result["antonyms"] = (
+        result.get("antonyms")
+        or first.get("antonyms")
+        or []
+    )
+
+    result["examples"] = (
+        result.get("examples")
+        or first.get("examples")
+        or []
+    )
+
+    result["usage_note"] = (
+        str(result.get("usage_note") or "").strip()
+        or first.get("usage_note")
+        or ""
+    )
+
     result["raw_wiktionary"] = wiktionary_data
     result["corrected_from"] = corrected_from
 
-    if (
-        correction_korean_meaning
-        and not result.get("definition")
-    ):
-        result["definition"] = correction_korean_meaning
-
     return result
-
 
 def ask_openai(question: str) -> str:
     system_prompt = """
