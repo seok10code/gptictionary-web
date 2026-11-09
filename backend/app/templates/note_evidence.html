@@ -1,0 +1,28 @@
+{# Presentation only: quote strings in storage are never changed. #}
+{% macro evidence(quote, source_id, label='대화 근거 보기') -%}
+{%- set ns = namespace(lines=[], blank=false) -%}
+{%- for line in (quote|note_text).splitlines() -%}
+  {%- if line.strip() -%}
+    {%- set ns.lines = ns.lines + [line.rstrip()] -%}
+    {%- set ns.blank = false -%}
+  {%- elif ns.lines and not ns.blank -%}
+    {%- set ns.lines = ns.lines + [''] -%}
+    {%- set ns.blank = true -%}
+  {%- endif -%}
+{%- endfor -%}
+{%- set compact = ('\n'.join(ns.lines)).strip('\n') -%}
+{%- set preview = ('\n'.join(compact.splitlines()[:10]))[:600] -%}
+<style>
+.study-evidence-more>summary .evidence-less-label{display:none}
+.study-evidence-more[open]>summary .evidence-more-label{display:none}
+.study-evidence-more[open]>summary .evidence-less-label{display:inline}
+</style>
+<details class="study-evidence"><summary>{{ label }}</summary>
+{% if preview|length < compact|length %}
+<p class="study-help">대화 근거의 시작 부분입니다. 아래에서 나머지 내용을 이어서 볼 수 있어요.</p>
+<blockquote>{{ preview }}</blockquote>
+<details class="study-evidence-more"><summary><span class="evidence-more-label">더 보기</span><span class="evidence-less-label">접기</span></summary><blockquote>{{ compact[preview|length:] }}</blockquote></details>
+{% else %}<blockquote>{{ compact }}</blockquote>{% endif %}
+<a href="/notes/sources/{{ source_id }}">질문·답변 원본 →</a>
+</details>
+{%- endmacro %}

@@ -1,0 +1,101 @@
+{% extends "base.html" %}
+{% block content %}
+<link rel="stylesheet" href="/static/css/notes.css?v=1">
+
+<div class="en-notes">
+    <p class="en-eyebrow">MY ENGLISH ARCHIVE</p>
+    <h1>영어 노트</h1>
+    <p class="en-muted">배운 내용을 찾고, 추가된 설명부터 다시 공부하세요.</p>
+
+    <div class="en-notice">
+        화면 확인용 샘플입니다. 실제 질문·단어장·학습 기록과는 아직 연결되지 않았습니다.
+    </div>
+
+    <p><a href="/notes/import">＋ ChatGPT 대화 가져오기</a></p>
+<nav class="en-tabs">
+        {% for key, label in [
+            ("study", "학습"),
+            ("all", "전체 노트"),
+            ("collections", "모음")
+        ] %}
+        <a href="/notes?tab={{ key }}"
+           class="{{ 'active' if tab == key else '' }}">{{ label }}</a>
+        {% endfor %}
+    </nav>
+
+    {% if tab == "collections" %}
+        <div class="en-grid">
+            {% for name in collections %}
+            <a class="en-card en-collection"
+               href="/notes?tab=all&collection={{ name|urlencode }}">
+                <span class="en-eyebrow">COLLECTION</span>
+                <h2>{{ name }}</h2>
+                <p>연결된 문장·문법·표현 보기 →</p>
+            </a>
+            {% endfor %}
+        </div>
+    {% else %}
+        {% if tab == "study" %}
+        <div class="en-stats">
+            <a href="/notes?state=NEW"><span>처음 볼 내용</span><b>1</b></a>
+            <a href="/notes?state=UPDATE"><span>추가된 설명</span><b>1</b></a>
+            <a href="/notes?state={{ '복습'|urlencode }}"><span>다시 볼 노트</span><b>1</b></a>
+        </div>
+        {% endif %}
+
+        <form class="en-search" method="get" action="/notes">
+            <input type="hidden" name="tab" value="all">
+            {% if collection %}
+            <input type="hidden" name="collection" value="{{ collection }}">
+            {% endif %}
+            <input name="q" value="{{ q }}"
+                   placeholder="영어·한국어로 제목과 설명 검색"
+                   aria-label="노트 검색">
+            <select name="kind" aria-label="내용 종류">
+                <option value="">모든 종류</option>
+                {% for label in ["문장 해석", "문법", "표현·뉘앙스", "영작·교정"] %}
+                <option value="{{ label }}"
+                        {{ 'selected' if kind == label else '' }}>{{ label }}</option>
+                {% endfor %}
+            </select>
+            <button type="submit">검색</button>
+        </form>
+
+        {% if collection or state %}
+        <p class="en-muted">
+            {% if collection %}모음: {{ collection }}{% endif %}
+            {% if state %}학습 상태: {{ state }}{% endif %}
+            · <a href="/notes?tab=all">필터 초기화</a>
+        </p>
+        {% endif %}
+
+        <div class="en-grid">
+            {% for note in notes %}
+            <article class="en-card">
+                <div class="en-meta">
+                    <span class="en-badge">{{ note.state }}</span>
+                    <span>{{ note.kind }} · {{ note.subject }}</span>
+                </div>
+                <h2>{{ note.title }}</h2>
+                <p>{{ note.summary }}</p>
+
+                {% if note.added %}
+                <div class="en-added">{{ note.added }}</div>
+                {% endif %}
+
+                <details>
+                    <summary>설명 펼쳐보기</summary>
+                    <div class="en-body">{{ note.body }}</div>
+                </details>
+
+                <footer>{{ note.collection }}</footer>
+            </article>
+            {% else %}
+            <div class="en-empty">
+                조건에 맞는 노트가 없습니다.
+            </div>
+            {% endfor %}
+        </div>
+    {% endif %}
+</div>
+{% endblock %}

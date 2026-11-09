@@ -1,0 +1,20 @@
+<!-- NOTE_WORD_LINKS_ACTION_V1 -->
+{% set job = (source.extraction or {}).get('word_linking_v1', {}) %}
+<section class="en-card" style="margin:20px 0">
+<h2>질문한 단어 · 단어장 연결</h2>
+{% if request.query_params.get('word_result') %}<div class="en-notice">{{ request.query_params.get('word_result') }}</div>{% endif %}
+{% if request.query_params.get('word_error') %}<div class="en-notice" role="alert">{{ request.query_params.get('word_error') }}</div>{% endif %}
+<p>뜻이나 용법을 직접 물어본 단어를 골라 기존 단어장에 연결합니다. 답변에 등장한 모든 단어를 저장하지는 않습니다.</p>
+{% for link in source.word_links or [] %}{% if link is mapping and link.get('target_key') %}
+<p><a href="/words?keyword={{ link.vocabulary|urlencode }}">{{ link.vocabulary }}</a>{% if link.requested_meaning %} · {{ link.requested_meaning }}{% endif %} · {{ '새로 저장' if link.created else '기존 단어 연결' }}</p>
+{% endif %}{% endfor %}
+{% if job.get('state') == 'complete' and job.get('target_count') == 0 %}<p class="en-muted">직접 물어본 어휘가 없는 질문입니다. 영어 노트에서 표현·문법을 복습하세요.</p>{% endif %}
+{% if job.get('state') in ['partial','error'] %}<p class="en-notice">일부 작업이 완료되지 않았습니다. 다시 누르면 저장된 결과를 유지하고 재시도합니다.</p>{% endif %}
+{% if source.status != 'ignored' %}
+<form method="post" action="/notes/sources/{{ source.id }}/words" class="en-search" onsubmit="this.querySelector('button').disabled=true;this.querySelector('button').textContent='단어 확인 중…';">
+<input type="hidden" name="csrf" value="{{ request.session.get('english_notes_csrf','') }}">
+<button>{{ '연결 결과 확인' if job.get('state') == 'complete' else '질문한 단어를 단어장에 연결' }}</button>
+</form>{% endif %}
+<p class="en-muted">새 단어는 단어장과 플래시카드에서 확인할 수 있습니다.</p>
+<p class="en-muted">단어 추출·새 뜻 검색 시 OpenAI API를 사용합니다.</p>
+</section>

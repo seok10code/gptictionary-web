@@ -7,3 +7,9 @@ __pycache__/
 
 # Flashcard TTS cache
 backend/app/static/audio/
+/tools/chatgpt-collector-extension/collector-local.js
+
+# Local environment and patch backups
+.venv/
+backups/
+*.bak

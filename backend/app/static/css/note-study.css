@@ -1,0 +1,42 @@
+.study-page {max-width:1100px; padding-bottom:48px;}
+.study-heading {margin:24px 0 28px;}
+.study-heading h1 {margin:12px 0 18px;line-height:1.35;}
+.study-label {font-size:12px;letter-spacing:.04em;color:#9bd8d0;}
+.study-key {background:#183737;border:1px solid #376a65;border-radius:16px;padding:24px 28px;margin:24px 0;}
+.study-key p {font-size:clamp(22px,3vw,32px);font-weight:650;line-height:1.5;margin:12px 0 0;color:#edfffb;overflow-wrap:anywhere;white-space:pre-wrap;}
+.study-blocks {display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:18px;margin:24px 0;}
+.study-block {background:#192638;border:1px solid #33465f;border-radius:16px;padding:24px;min-width:0;}
+.study-block h2,.study-correction h2,.study-warning h2 {font-size:17px;margin:0 0 16px;}
+.study-point p,.study-copy {white-space:pre-wrap;overflow-wrap:anywhere;line-height:1.85;}
+.study-point+.study-point {margin-top:20px;padding-top:18px;border-top:1px solid #33465f;}
+.study-point p {margin:0 0 12px;}
+.study-evidence {font-size:13px;color:#9bb0c4;line-height:1.75;}
+.study-evidence summary,.study-history summary {cursor:pointer;color:#9bd8d0;}
+.study-evidence blockquote {border-left:2px solid #5a8b86;margin:12px 0;padding:8px 14px;white-space:pre-wrap;overflow-wrap:anywhere;}
+.study-correction,.study-warning {border-radius:14px;padding:22px 26px;margin:20px 0;line-height:1.8;overflow-wrap:anywhere;}
+.study-correction {background:#14312f;border:1px solid #315d55;}
+.study-correction ul {padding-left:20px;margin:0;}
+.study-correction li+li {margin-top:8px;}
+.study-warning {background:#332d1c;border:1px solid #786743;}
+.study-warning h2 {color:#f3d799;}
+.study-warning p {white-space:pre-wrap;}
+.study-help {font-size:12px;line-height:1.7;color:#9baec2;}
+.study-material>summary {cursor:pointer;color:#9bd8d0;padding:12px 0;}
+.study-recall {background:#101c2e;border:1px solid #3a536f;border-radius:16px;padding:24px 28px;margin:28px 0;}
+.study-recall h2 {font-size:19px;line-height:1.65;margin:12px 0;}
+.study-recall summary {font-size:13px;color:#a6bacb;cursor:pointer;}
+.study-complete {margin:28px 0;flex-wrap:wrap;align-items:center;gap:16px;}
+.study-history {margin:18px 0;padding:22px 24px;background:#172436;border:1px solid #33465f;border-radius:14px;}
+.study-history h3 {margin-top:24px;}
+.study-stats {display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:16px;}
+.study-stats .en-card {padding:20px 22px;}
+.study-stats h2 {margin:10px 0 0;}
+.study-card-key {font-size:14px;color:#9bd8d0;line-height:1.6;overflow-wrap:anywhere;}
+.study-card-warning {color:#f3d799;font-size:12px;}
+.study-card-preview {white-space:pre-line;overflow-wrap:anywhere;line-height:1.8;}
+@media(max-width:700px){.study-blocks{grid-template-columns:1fr;}.study-key,.study-block,.study-warning,.study-correction,.study-recall{padding:20px;}.study-stats{gap:8px;}.study-stats .en-card{padding:14px 10px;}.study-stats .en-muted{font-size:11px;}.study-history{padding:18px;}.study-complete button{width:100%;}}
+
+/* Compact evidence, used by notes. */
+.study-evidence-more {margin:10px 0 14px;}
+.study-evidence-more>summary {padding:8px 0;cursor:pointer;}
+.study-evidence blockquote {line-height:1.65;}

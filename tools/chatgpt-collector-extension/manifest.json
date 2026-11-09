@@ -1,0 +1,47 @@
+{
+  "manifest_version": 3,
+  "name": "GPTictionary Collector",
+  "version": "0.5.0",
+  "description": "ChatGPT 영어 학습 대화를 자동 감지하고 서버로 전송합니다.",
+  "permissions": [
+    "activeTab",
+    "scripting",
+    "storage",
+    "alarms"
+  ],
+  "action": {
+    "default_popup": "popup.html",
+    "default_title": "GPTictionary Collector",
+    "default_icon": {
+      "16": "icons/gptic-icon-16.png",
+      "32": "icons/gptic-icon-32.png"
+    }
+  },
+  "content_scripts": [
+    {
+      "matches": [
+        "https://chatgpt.com/*",
+        "https://chat.openai.com/*"
+      ],
+      "js": [
+        "collector-read.js",
+        "collector-policy.js",
+        "collector-auto.js"
+      ],
+      "run_at": "document_idle"
+    }
+  ],
+  "host_permissions": [
+    "http://127.0.0.1:8000/*",
+    "http://192.168.0.22:8000/*"
+  ],
+  "background": {
+    "service_worker": "service-worker.js"
+  },
+  "icons": {
+    "16": "icons/gptic-icon-16.png",
+    "32": "icons/gptic-icon-32.png",
+    "48": "icons/gptic-icon-48.png",
+    "128": "icons/gptic-icon-128.png"
+  }
+}

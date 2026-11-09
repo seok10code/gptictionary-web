@@ -1,0 +1,25 @@
+{% extends "base.html" %}
+{% block content %}
+<link rel="stylesheet" href="/static/css/note-document.css?v=6">
+<main class="nd-page">
+<a class="nd-back" href="/notes">← 영어 노트</a>
+<article>
+<header class="nd-header"><p class="nd-category">{{ kinds.get(note.kind,note.kind) }}{% if note.subject %} · {{ note.subject }}{% endif %}</p><h1>{{ document.title if document and document.title else note.title }}</h1></header>
+{% if document and document.sections %}
+{% if document.summary %}<div class="nd-overview">{{ document.summary|note_document_text }}</div>{% endif %}
+{% if document.sections|length > 3 %}<nav class="nd-toc" aria-label="목차">{% for section in document.sections %}<a href="#section-{{ loop.index }}">{{ section.heading }}</a>{% endfor %}</nav>{% endif %}
+<div class="nd-body">{% for section in document.sections %}<section id="section-{{ loop.index }}" class="nd-section">{% if section.heading %}<h2>{{ section.heading }}</h2>{% endif %}
+{% for block in section.blocks %}
+{% if block.kind in ['table','examples','source_examples'] %}
+{{ block|note_document_text }}
+{% elif block.kind == 'formula' %}<div class="nd-formula">{{ block.text|note_rich_text }}</div>
+{% elif block.kind == 'list' %}<ul class="nd-points">{% for item in block['items'] %}<li>{{ item|note_rich_text }}</li>{% endfor %}</ul>
+{% elif block.kind == 'dialogue' %}<div class="nd-table-wrap nd-dialogue-table" tabindex="0" role="region" aria-label="대화와 해석"><table><thead><tr><th scope="col">화자</th><th scope="col">영어</th><th scope="col">해석</th></tr></thead><tbody>{% for row in block.rows %}<tr><th scope="row">{{ row[0] }}</th><td lang="en">{{ row[1]|note_rich_text }}</td><td>{{ row[2]|note_rich_text }}</td></tr>{% endfor %}</tbody></table></div>
+{% else %}<div class="nd-paragraph">{{ block.text|note_document_text }}</div>{% endif %}
+{% endfor %}
+</section>{% endfor %}</div>
+{% else %}{% for section in sections %}<section class="nd-section nd-paragraph">{{ section.body|note_document_text }}</section>{% endfor %}{% endif %}
+</article>
+{% if sources %}<details class="nd-originals"><summary>대화 원문</summary><ul>{% for source in sources %}<li><a href="/notes/sources/{{ source.id }}">{{ source.question }}</a></li>{% endfor %}</ul></details>{% endif %}
+</main>
+{% endblock %}

@@ -1,0 +1,18 @@
+<!doctype html>
+<html lang="ko">
+<head>
+<meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<style>
+*{box-sizing:border-box}body{margin:0;width:340px;padding:22px;background:#0f172a;color:#e2e8f0;font-family:system-ui,sans-serif}h1{font-size:17px;margin:0 0 24px;letter-spacing:-.4px}.setting{display:flex;align-items:center;justify-content:space-between;gap:20px}.label{font-size:16px;font-weight:650}.switch{position:relative;width:48px;height:28px;flex:none}.switch input{position:absolute;opacity:0;width:100%;height:100%;margin:0;cursor:pointer;z-index:1}.track{display:block;height:28px;border-radius:20px;background:#475569;transition:background .15s}.track:after{content:'';position:absolute;width:22px;height:22px;left:3px;top:3px;border-radius:50%;background:white;transition:transform .15s}input:checked+.track{background:#65cbbb}input:checked+.track:after{transform:translateX(20px)}input:focus-visible+.track{outline:3px solid #a5b4fc;outline-offset:4px}input:disabled+.track{opacity:.5}.hint{color:#94a3b8;line-height:1.65;font-size:13px;margin:13px 0 21px}.status{border-top:1px solid #334155;padding-top:17px;font-size:13px;line-height:1.65}.dot{display:inline-block;width:7px;height:7px;border-radius:50%;background:#94a3b8;margin-right:8px}.dot.on{background:#78d3c2}.dot.error{background:#fbbf24}#detail{font-size:12px;color:#94a3b8;margin:7px 0 0;overflow-wrap:anywhere}
+.receipts{border-top:1px solid #334155;margin-top:16px;padding-top:14px}h2{font-size:12px;color:#94a3b8;font-weight:600;margin:0 0 10px}#receipt-list{font-size:12px;line-height:1.7;white-space:pre-line;overflow-wrap:anywhere;margin:0}details{margin-top:14px;font-size:12px;color:#94a3b8}summary{cursor:pointer}pre{white-space:pre-wrap;overflow-wrap:anywhere;font-size:11px}#checked{font-size:11px;color:#94a3b8;margin:9px 0 0}
+</style></head>
+<body>
+<h1>GPTictionary Collector</h1>
+<div class="setting"><span class="label" id="auto-label">자동 감지</span><label class="switch"><input id="auto" type="checkbox" role="switch" aria-labelledby="auto-label"><span class="track"></span></label></div>
+<p class="hint">ChatGPT에서 영어 학습 대화를 감지하면<br>답변 완료 후 자동으로 서버에 보냅니다.</p>
+<div class="status" role="status" aria-live="polite"><span id="dot" class="dot"></span><span id="state">확인 중…</span><p id="detail"></p></div>
+<p id="checked"></p>
+<section class="receipts"><h2>이 대화의 최근 서버 접수</h2><p id="receipt-list">아직 접수 기록이 없습니다.</p></section>
+<details id="diagnostic" hidden><summary>멈춘 이유 보기</summary><pre id="debug"></pre></details>
+<script src="collector-policy.js"></script><script src="auto-popup.js"></script>
+</body></html>

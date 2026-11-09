@@ -575,11 +575,21 @@ def _merge_ai_senses(
             sense_key,
         )
 
-        existing = get_sense_by_key(
-            db,
-            word.id,
-            sense_key,
-        )
+        existing = (db.query(WordSense)
+                    .execution_options(include_excluded_senses=True)
+                    .filter(WordSense.word_id == word.id, WordSense.sense_key == sense_key)
+                    .first())
+        if existing:
+            from backend.app.models.word_sense_exclusion import WordSenseExclusion
+            if db.get(WordSenseExclusion, existing.id) is not None:
+                # A previously rejected row retains its history and stays quarantined.
+                # A valid incoming sense with the same generated key needs a distinct key.
+                import hashlib
+                digest = hashlib.sha256((part_of_speech + ':' + korean_meaning).encode()).hexdigest()[:16]
+                sense_key = sense_key[:190] + '_reviewed_' + digest
+                existing = (db.query(WordSense)
+                            .filter(WordSense.word_id == word.id, WordSense.sense_key == sense_key)
+                            .first())
 
         if not existing:
             existing = _find_equivalent_sense(
@@ -741,8 +751,9 @@ async def search_word(
             "found": False,
             "created": False,
             "message": (
-                "유효한 영어 단어 또는 표현을 "
-                "찾지 못했습니다."
+                "뜻 검토를 완료하지 못해 저장을 보류했습니다."
+                if ai_result.get("review_pending") else
+                "유효한 영어 단어 또는 표현을 찾지 못했습니다."
             ),
         }
 

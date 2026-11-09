@@ -49,6 +49,9 @@ def get_words_with_senses_paginated(
             .distinct()
         )
 
+    from backend.app.services.note_auto_word_scope import visible_words
+    query = visible_words(query, db)
+
     total_count = query.count()
 
     if sort == "abc":

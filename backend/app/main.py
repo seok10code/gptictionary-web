@@ -18,6 +18,9 @@ from backend.app.api.routes.settings import router as settings_router
 from backend.app.api.routes.search import router as search_router
 from backend.app.api.routes import writing
 from backend.app.api.routes.flashcards import router as flashcards_router
+from backend.app.api.routes.notes import router as notes_router
+from backend.app.api.routes.notes_import import router as notes_import_router
+from backend.app.api.routes.collector import router as collector_router
 
 from backend.app.db.database import get_db
 from backend.app.services.stats_service import get_dashboard_data
@@ -37,6 +40,7 @@ async def auth_middleware(request: Request, call_next):
     public_paths = [
         "/login",
         "/favicon.ico",
+        "/api/collector/snapshots",
     ]
 
     if (
@@ -89,6 +93,9 @@ app.include_router(settings_router)
 app.include_router(search_router)
 app.include_router(writing.router)
 app.include_router(flashcards_router)
+app.include_router(notes_import_router)
+app.include_router(collector_router)
+app.include_router(notes_router)
 
 @app.get("/", response_class=HTMLResponse)
 def home(
@@ -104,3 +111,14 @@ def home(
             "today_paragraph": get_or_create_today_paragraph(db),
         },
     )
+
+# Conversation-aware automatic processing; raw collection stays separate.
+@app.on_event("startup")
+async def start_english_auto_processing():
+    from backend.app.services.note_auto_worker import start_worker
+    await start_worker(app)
+
+@app.on_event("shutdown")
+async def stop_english_auto_processing():
+    from backend.app.services.note_auto_worker import stop_worker
+    await stop_worker(app)

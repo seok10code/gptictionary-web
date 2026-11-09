@@ -181,3 +181,6 @@ class WordSense(Base):
         "Word",
         back_populates="senses",
     )
+
+from backend.app.models.word_sense_exclusion import install_sense_filter
+install_sense_filter(WordSense)

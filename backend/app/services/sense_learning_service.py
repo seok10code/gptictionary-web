@@ -3,6 +3,7 @@ import os
 
 from openai import AsyncOpenAI
 from sqlalchemy.orm import Session
+from sqlalchemy.exc import SQLAlchemyError
 
 from backend.app.crud.sense_learning import (
     get_coach_note_by_sense_id,
@@ -50,21 +51,17 @@ async def get_or_create_sense_learning_data(
     vocabulary: str,
     sense,
 ) -> dict:
-    coach_note = get_coach_note_by_sense_id(
-        db=db,
-        word_sense_id=sense.id,
-    )
+    try:
+        coach_note = get_coach_note_by_sense_id(db=db, word_sense_id=sense.id)
+        confusions = get_confusions_by_sense_id(db=db, word_sense_id=sense.id)
+    except SQLAlchemyError:
+        db.rollback()
+        print("SENSE LEARNING CACHE READ FAILED")
+        return {"coach": None, "confusions": []}
 
-    confusions = get_confusions_by_sense_id(
-        db=db,
-        word_sense_id=sense.id,
-    )
-
-    if coach_note and confusions:
-        return _serialize_learning_data(
-            coach_note,
-            confusions,
-        )
+    # An empty comparisons list is a valid completed result, not a cache miss.
+    if coach_note is not None:
+        return _serialize_learning_data(coach_note, confusions)
 
     prompt = f"""
 너는 한국인 영어 학습자를 위한 AI 코치다.
@@ -184,22 +181,14 @@ JSON 구조:
             f"'{sense.korean_meaning}'로 기억하세요."
         )
 
-    replace_sense_learning_data(
-        db=db,
-        word_sense_id=sense.id,
-        coach_tip=coach_tip,
-        memory_tip=memory_tip,
-        pattern_tip=pattern_tip,
-        comparisons=comparisons,
-    )
-
-    return _serialize_learning_data(
-        get_coach_note_by_sense_id(
-            db=db,
-            word_sense_id=sense.id,
-        ),
-        get_confusions_by_sense_id(
-            db=db,
-            word_sense_id=sense.id,
-        ),
-    )
+    try:
+        saved = replace_sense_learning_data(
+            db=db, word_sense_id=sense.id, coach_tip=coach_tip,
+            memory_tip=memory_tip, pattern_tip=pattern_tip, comparisons=comparisons)
+        return _serialize_learning_data(
+            saved, get_confusions_by_sense_id(db=db, word_sense_id=sense.id))
+    except SQLAlchemyError:
+        # Optional coaching must not break an otherwise valid dictionary page.
+        db.rollback()
+        print("SENSE LEARNING CACHE SAVE FAILED")
+        return {"coach": None, "confusions": []}

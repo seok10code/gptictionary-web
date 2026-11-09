@@ -184,7 +184,9 @@ The entries array MUST contain ALL major learner-useful senses.
 
 - Never return only one entry when the word has multiple common meanings.
 - For a common polysemous word, return at least 3 entries.
-- Normally return between 3 and 8 entries.
+- Do not target an entry count. Include only supported senses of this exact headword.
+- Never borrow a related word/root/derivative meaning or part of speech.
+- Synonyms and antonyms must match the specific sense, not merely be related words.
 - Return one entry only when the word genuinely has only one common meaning.
 
 For the word "right", entries MUST include at least these distinct senses:
@@ -299,138 +301,6 @@ Wiktionary data:
         return {
             "valid": False,
         }
-
-    minimum_entry_count = 1
-
-    if vocabulary == "right":
-        minimum_entry_count = 5
-    elif len(wiktionary_data or {}) > 0:
-        minimum_entry_count = 2
-
-    if len(entries) < minimum_entry_count:
-        print(
-            "INSUFFICIENT WORD SENSES:",
-            vocabulary,
-            "count=",
-            len(entries),
-        )
-
-        retry_prompt = f"""
-    The previous result returned too few dictionary senses.
-
-    Word:
-    {vocabulary}
-
-    Previous entries:
-    {json.dumps(entries, ensure_ascii=False, indent=2)}
-
-    Create a corrected COMPLETE entries array.
-
-    Requirements:
-    - Include all major learner-useful meanings.
-    - Separate meanings by part of speech and actual meaning.
-    - Return between 3 and 8 distinct entries for a common polysemous word.
-    - Every entry must contain:
-    sense_key,
-    part_of_speech,
-    korean_meaning,
-    definitions,
-    sentence,
-    synonyms,
-    antonyms,
-    exactly 2 examples,
-    usage_note,
-    conversation with exactly A and B,
-    exactly 2 writing_examples,
-    search_keywords.
-
-    For "right", include at least:
-    1. Noun: 권리, 권한
-    2. Adjective: 옳은, 올바른, 정확한
-    3. Adjective: 오른쪽의
-    4. Noun: 오른쪽, 오른쪽 방향
-    5. Adverb: 오른쪽으로
-
-    Return JSON only in this form:
-
-    {{
-    "entries": [
-        {{
-        "sense_key": "...",
-        "part_of_speech": "...",
-        "korean_meaning": "...",
-        "definitions": ["..."],
-        "sentence": "...",
-        "synonyms": ["..."],
-        "antonyms": ["..."],
-        "examples": ["...", "..."],
-        "usage_note": "...",
-        "conversation": [
-            {{
-            "speaker": "A",
-            "text": "..."
-            }},
-            {{
-            "speaker": "B",
-            "text": "..."
-            }}
-        ],
-        "writing_examples": ["...", "..."],
-        "search_keywords": ["..."]
-        }}
-    ]
-    }}
-    """
-
-        try:
-            retry_response = client.chat.completions.create(
-                model=os.getenv(
-                    "OPENAI_MODEL",
-                    "gpt-4o-mini",
-                ),
-                response_format={
-                    "type": "json_object",
-                },
-                messages=[
-                    {
-                        "role": "system",
-                        "content": (
-                            "Return valid JSON only. "
-                            "Generate all major dictionary senses."
-                        ),
-                    },
-                    {
-                        "role": "user",
-                        "content": retry_prompt,
-                    },
-                ],
-                temperature=0.05,
-            )
-
-            retry_result = json.loads(
-                retry_response
-                .choices[0]
-                .message
-                .content
-                .strip()
-            )
-
-            retry_entries = retry_result.get(
-                "entries"
-            )
-
-            if (
-                isinstance(retry_entries, list)
-                and len(retry_entries) > len(entries)
-            ):
-                entries = retry_entries
-                result["entries"] = retry_entries
-
-        except Exception as exc:
-            print(
-                "WORD SENSE RETRY ERROR:",
-                repr(exc),
-            )
 
     cleaned_entries = []
 
@@ -583,46 +453,24 @@ Wiktionary data:
             "valid": False,
         }
 
+    from backend.app.services.word_entry_review import review_entries
+    try:
+        cleaned_entries = review_entries(vocabulary, cleaned_entries, wiktionary_data)
+    except Exception:
+        # No unchecked entry is saved when review fails. Do not log credentials or full responses.
+        return {"valid": False, "review_pending": True}
+    if not cleaned_entries:
+        return {"valid": False, "review_pending": True}
+    result["vocabulary"] = vocabulary
     result["entries"] = cleaned_entries
 
     first = cleaned_entries[0]
 
-    result["definition"] = (
-        str(result.get("definition") or "").strip()
-        or first.get("korean_meaning")
-        or correction_korean_meaning
-        or ""
-    )
-
-    result["sentence"] = (
-        str(result.get("sentence") or "").strip()
-        or first.get("sentence")
-        or ""
-    )
-
-    result["synonyms"] = (
-        result.get("synonyms")
-        or first.get("synonyms")
-        or []
-    )
-
-    result["antonyms"] = (
-        result.get("antonyms")
-        or first.get("antonyms")
-        or []
-    )
-
-    result["examples"] = (
-        result.get("examples")
-        or first.get("examples")
-        or []
-    )
-
-    result["usage_note"] = (
-        str(result.get("usage_note") or "").strip()
-        or first.get("usage_note")
-        or ""
-    )
+    # Top-level legacy fields must mirror the accepted primary entry, never rejected data.
+    for field, entry_field in [('definition','korean_meaning'),('sentence','sentence'),
+                               ('synonyms','synonyms'),('antonyms','antonyms'),
+                               ('examples','examples'),('usage_note','usage_note')]:
+        result[field] = first.get(entry_field) or ([] if field in {'synonyms','antonyms','examples'} else '')
 
     result["raw_wiktionary"] = wiktionary_data
     result["corrected_from"] = corrected_from

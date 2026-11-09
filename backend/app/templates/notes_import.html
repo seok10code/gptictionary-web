@@ -1,0 +1,80 @@
+{% extends "base.html" %}
+{% block content %}
+<link rel="stylesheet" href="/static/css/notes.css?v=1">
+<div class="en-notes">
+<p><a href="/notes">← 영어 노트</a></p>
+<h1>수집한 원본</h1>
+<p class="en-muted">파일과 브라우저에서 가져온 기록입니다. 같은 질문의 다른 본문은 버전으로 묶습니다.</p>
+
+<details class="en-card" style="margin:20px 0">
+<summary style="cursor:pointer">＋ ChatGPT 내보내기 파일 가져오기</summary>
+<p>100MB 이하 conversations.json을 지원합니다. 선택한 대화의 질문을 모두 가져옵니다.</p>
+<form method="post" action="/notes/import" enctype="multipart/form-data">
+<p><input type="file" name="file" accept=".json,application/json" required></p>
+<div class="en-search">
+<input name="title_filter" placeholder="대화 제목에 포함된 단어 · 비우면 전체">
+<button>가져오기</button>
+</div>
+<p class="en-muted">중복은 건너뛰고, 관련 질문·후속 정정을 함께 읽어 단어장과 노트로 자동 정리합니다.</p>
+</form>
+</details>
+
+{% if request.query_params.get('added') is not none %}
+<div class="en-notice">새 원본 {{ added }}개 · 중복 {{ skipped }}개 · 파일 확인으로 분석 대기 전환 {{ promoted }}개</div>
+{% endif %}
+
+<section class="en-card" style="margin:24px 0"><h2>대화별 자동 처리</h2>
+<p class="en-muted">변경이 멈춘 뒤 약 45초 대기하고 자동 분석을 시작합니다. 아래는 최근 30개 대화입니다. 처리 후 새로고침해 주세요.</p>
+{% for conv in auto_conversations %}<div style="padding:15px 0;border-bottom:1px solid #314057">
+<strong>{{ conv.title }}</strong> · {{ auto_statuses.get(conv.status, conv.status) }}
+<p class="en-muted">대화 변경 {{ conv.revision }} · 처리 완료 {{ conv.processed_revision }}</p>
+{% if conv.error %}<p>{{ conv.error }}</p>{% endif %}
+{% if conv.status in ['error','retry','review_needed'] %}<form method="post" action="/notes/auto/{{ conv.key }}/retry"><input type="hidden" name="csrf" value="{{ request.session.get('english_notes_csrf','') }}"><button>{{ '검토 대기 다시 확인' if conv.status == 'review_needed' else '실패한 대화 재시도' }}</button></form>{% endif %}
+</div>{% else %}<p>등록된 대화가 없습니다. 확장프로그램으로 수집하거나 파일을 올려 주세요.</p>{% endfor %}
+</section>
+<h2>질문·답변 원본</h2>
+<nav class="en-tabs" style="flex-wrap:wrap;gap:18px">
+{% for key,label in [('all','전체'),('file','파일'),('browser','브라우저'),('unverified','미확인'),('excluded','제외된 기록')] %}
+<a href="/notes/import?channel={{ key }}&q={{ q|urlencode }}" class="{{ 'active' if channel == key else '' }}">{{ label }}</a>
+{% endfor %}
+</nav>
+
+<form class="en-search" method="get" action="/notes/import">
+<input type="hidden" name="channel" value="{{ channel }}">
+<input name="q" value="{{ q }}" placeholder="대화 제목·질문·답변 검색">
+<button>검색</button>
+</form>
+
+<p><strong>질문 {{ question_count }}개</strong> · 원본 버전 {{ version_count }}개</p>
+{% if channel == 'unverified' %}
+<div class="en-notice">출처를 확인할 수 없는 보관 기록입니다. 이전 시험 수집본도 포함됩니다.</div>
+{% elif unverified_count %}
+<p class="en-muted">미확인 원본 {{ unverified_count }}개는 전체 목록에서 분리했습니다.</p>
+{% endif %}
+<p class="en-muted">목록에는 최근 추가된 버전을 표시합니다. ‘임시 수집’은 답변 완료를 뜻하지 않습니다.</p>
+
+<div class="en-grid">
+{% for card in cards %}
+<article class="en-card">
+<div class="en-meta">
+{% for badge in card.badges %}<span class="en-badge">{{ badge }}</span>
+{% else %}<span class="en-badge">출처 미확인</span>{% endfor %}
+<span>{{ status_labels.get(card.status, card.status) }}</span>
+</div>
+<p class="en-muted">{{ card.collection }}</p>
+<h2>{{ card.question_preview }}</h2>
+<p style="white-space:pre-line;overflow-wrap:anywhere">{{ card.answer_preview }}</p>
+<footer><a href="/notes/sources/{{ card.id }}">원본 · 버전 {{ card.versions }}개 보기 →</a></footer>
+</article>
+{% else %}
+<div class="en-empty">이 범위에 표시할 원본이 없습니다.</div>
+{% endfor %}
+</div>
+
+<div style="display:flex;gap:20px;justify-content:center;margin:25px 0">
+{% if page > 1 %}<a href="/notes/import?channel={{ channel }}&q={{ q|urlencode }}&page={{ page-1 }}">← 이전</a>{% endif %}
+<span>{{ page }} 페이지</span>
+{% if has_more %}<a href="/notes/import?channel={{ channel }}&q={{ q|urlencode }}&page={{ page+1 }}">다음 →</a>{% endif %}
+</div>
+</div>
+{% endblock %}

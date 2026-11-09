@@ -1,0 +1,58 @@
+{% extends "base.html" %}
+{% block content %}
+<link rel="stylesheet" href="/static/css/note-document.css?v=3">
+<link rel="stylesheet" href="/static/css/note-topic-map.css?v=2">
+<section class="nd-index nm-index" aria-labelledby="nm-title">
+  <header class="nd-header nm-header">
+    <p class="nd-category">MY ENGLISH ARCHIVE</p>
+    <h1 id="nm-title">영어 노트</h1>
+    <p class="nd-subtitle">주제별로 모아보고, 저장 날짜를 골라 그날의 노트를 함께 복습하세요.</p>
+  </header>
+  <form action="/notes" method="get" class="nd-search nm-search" role="search">
+    <input name="q" value="{{ q }}" placeholder="찾고 싶은 표현이나 주제" aria-label="노트 검색">
+    <select name="kind" aria-label="노트 종류">
+      <option value="">모든 종류</option>
+      {% for key,label in kinds.items() %}<option value="{{ key }}" {{ 'selected' if kind==key else '' }}>{{ label }}</option>{% endfor %}
+    </select>
+    <label class="nm-day-label">저장일 <input type="date" name="day" value="{{ day }}" aria-label="저장 날짜"></label>
+    <select name="sort" aria-label="노트 정렬">
+      <option value="newest" {{ 'selected' if sort=='newest' else '' }}>최신순</option>
+      <option value="oldest" {{ 'selected' if sort=='oldest' else '' }}>오래된순</option>
+    </select>
+    <button type="submit">검색</button>
+    {% if day %}<a class="nm-clear-day" href="{{ url(day='',page=1) }}">날짜 해제</a>{% endif %}
+  </form>
+  {% if cards %}
+  {% set grouped=cards|groupby('note.kind') %}
+  <div class="nm-map" aria-label="종류와 주제별 영어 노트">
+    <div class="nm-root"><span class="nm-root-label">{% if day %}{{ day }} 저장 노트{% else %}내 학습 노트{% endif %}</span><span class="nm-root-count">{% if page>1 or has_more %}현재 페이지 · {% endif %}{{ cards|length }}개</span></div>
+    <div class="nm-grid {{ 'nm-single' if grouped|length==1 else '' }}">
+      {% macro branch(group) %}
+      {% set category=kinds.get(group.grouper,group.grouper) %}
+      <section class="nm-kind" aria-label="{{ category }} 노트">
+        <header class="nm-kind-header"><h2><span class="nm-kind-dot" aria-hidden="true"></span>{{ category }}</h2><span class="nm-kind-count">{{ group.list|length }}개</span></header>
+        <div class="nm-subjects">
+          {% for subject in group.list|groupby('note.subject') %}
+          <details class="nm-subject" open>
+            <summary><span class="nm-subject-toggle" aria-hidden="true"></span><span>{{ subject.grouper|trim or '기타 주제' }}</span><span class="nm-subject-count">{{ subject.list|length }}</span></summary>
+            <ul class="nm-leaves">
+              {% for card in subject.list %}
+              <li><a href="/notes/{{ card.note.id }}"><span class="nm-leaf-main"><span class="nm-leaf-title">{{ card.title }}</span>{% if card.tags %}<span class="nm-tags" aria-label="주요 내용">{% for tag in card.tags %}<span class="nm-tag">{{ tag }}</span>{% endfor %}</span>{% endif %}</span><span class="nm-open" aria-hidden="true">↗</span></a></li>
+              {% endfor %}
+            </ul>
+          </details>
+          {% endfor %}
+        </div>
+      </section>
+      {% endmacro %}
+      {# Keep familiar categories first; unknown stored kinds stay discoverable. #}
+      {% for preferred in ['grammar','expression','sentence','conversation','vocabulary'] %}{% for group in grouped if group.grouper==preferred %}{{ branch(group) }}{% endfor %}{% endfor %}
+      {% for group in grouped if group.grouper not in ['grammar','expression','sentence','conversation','vocabulary'] %}{{ branch(group) }}{% endfor %}
+    </div>
+  </div>
+  {% else %}
+  <p class="nd-empty">{% if q or kind or day %}조건에 맞는 노트가 없어요. <a href="/notes">전체 노트 보기</a>{% else %}영어 대화가 정리되면 주제별 노트가 여기에 모여요.{% endif %}</p>
+  {% endif %}
+  {% if page>1 or has_more %}<nav class="nd-pagination" aria-label="노트 목록 페이지">{% if page>1 %}<a href="{{ url(page=page-1,state='all') }}">← 이전</a>{% endif %}<span>{{ page }}페이지</span>{% if has_more %}<a href="{{ url(page=page+1,state='all') }}">다음 →</a>{% endif %}</nav>{% endif %}
+</section>
+{% endblock %}
