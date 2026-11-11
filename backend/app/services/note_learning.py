@@ -39,8 +39,16 @@ def write_guard(db):
     bind = db.get_bind()
     bind.echo = False
     bind.hide_parameters = True
-    if bind.dialect.name != "sqlite" and db.execute(text("SELECT DATABASE()")).scalar() != "dbo_dev":
-        raise NoteProblem("현재 단계는 dbo_dev 개발 DB에서만 실행할 수 있습니다.")
+    database = (
+        db.execute(text("SELECT DATABASE()")).scalar()
+        if bind.dialect.name != "sqlite"
+        else None
+    )
+    production_enabled = os.getenv("ALLOW_PRODUCTION_NOTE_WRITES") == "1"
+    if bind.dialect.name != "sqlite" and database != "dbo_dev" and not (
+        database == "dbo" and production_enabled
+    ):
+        raise NoteProblem("dbo 운영 DB 쓰기는 ALLOW_PRODUCTION_NOTE_WRITES=1 설정이 필요합니다.")
 
 
 def validate_draft(draft):

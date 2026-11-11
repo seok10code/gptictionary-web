@@ -66,8 +66,10 @@ def receive_snapshots(
     db.get_bind().hide_parameters = True
 
     database = db.execute(text("SELECT DATABASE()")).scalar()
-    if database != "dbo_dev":
-        raise HTTPException(400, "현재 단계에서는 dbo_dev에만 저장합니다.")
+    if database != "dbo_dev" and not (
+        database == "dbo" and os.getenv("ALLOW_PRODUCTION_NOTE_WRITES") == "1"
+    ):
+        raise HTTPException(400, "허용된 영어 노트 DB가 아닙니다.")
 
     # 배치 전체를 검증한 뒤 저장합니다.
     for item in payload.snapshots:
