@@ -44,7 +44,7 @@ def candidates(db,turn,previous):
     paired=db.query(NotePairDocument.note_id).filter(NotePairDocument.note_id==EnglishNote.id).exists()
     visible=db.query(EnglishNote).filter(or_(~managed,active,paired))
     matches=visible.filter(or_(*checks)).order_by(EnglishNote.updated_at.desc()).limit(40).all() if checks else []
-    explicit_followup=bool(re.match(r'^\s*(?:그럼|그러면|그렇다면|그 표현|이 표현|그 경우|그 이유|그때|그렇게|what about|how about|why\b|so\b)',turn['question'],re.I))
+    explicit_followup=bool(editor.FOLLOWUP_SHAPE.search(turn['question']))
     prior_ids=[p['note_id'] for p in previous if p.get('note_id')] if explicit_followup else []
     earlier=db.query(EnglishNote).filter(EnglishNote.id.in_(prior_ids)).all() if prior_ids else []
     combined={}
