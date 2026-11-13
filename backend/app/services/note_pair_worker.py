@@ -44,8 +44,9 @@ def candidates(db,turn,previous):
     paired=db.query(NotePairDocument.note_id).filter(NotePairDocument.note_id==EnglishNote.id).exists()
     visible=db.query(EnglishNote).filter(or_(~managed,active,paired))
     matches=visible.filter(or_(*checks)).order_by(EnglishNote.updated_at.desc()).limit(40).all() if checks else []
-    explicit_followup=bool(editor.FOLLOWUP_SHAPE.search(turn['question']))
-    prior_ids=[p['note_id'] for p in previous if p.get('note_id')] if explicit_followup else []
+    # Include the last persisted note candidates as context; admission itself is
+    # decided by the question-only GPT classifier before this worker runs.
+    prior_ids=[p['note_id'] for p in previous if p.get('note_id')]
     earlier=db.query(EnglishNote).filter(EnglishNote.id.in_(prior_ids)).all() if prior_ids else []
     combined={}
     for n in earlier+matches:combined.setdefault(n.id,n)

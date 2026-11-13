@@ -35,6 +35,7 @@
             let previous = null;
             let latestHash = null, latestReady = false, latestEligible = null;
             const newest = groups.at(-1);
+            const newestQuestionId = newest?.question.message_id;
             for (const [index, pair] of pairs.entries()) {
                 const answer = pair.answers.map(m => m.text).join('\n\n');
                 const answerId = pair.answers.at(-1).message_id;
@@ -44,7 +45,7 @@
                 const firstSeen = quietHashes.get(hash) ?? Date.now();
                 quietHashes.set(hash, firstSeen);
                 const stable = Date.now() - firstSeen >= 12000 && !(index === pairs.length-1 && streaming());
-                if (pair === newest) {
+                if (pair.question.message_id === newestQuestionId) {
                     latestHash = hash;
                     latestReady = stable;
                     latestEligible = selected[index];
@@ -54,7 +55,7 @@
                         conversation_id: cid, source_conversation_id: cid, identity_checked: true,
                         title: data.title, question_id: pair.question.message_id, answer_id: answerId,
                         question: pair.question.text, answer, captured_at: new Date().toISOString(),
-                        stage: 'draft', auto_policy: 1, content_hash: hash, protocol: 2,
+                        stage: 'draft', auto_policy: 1, content_hash: hash, protocol: 3,
                         previous_question_id: previous, order_known: true, snapshot_stable: true
                     };
                 }
@@ -71,12 +72,22 @@
                     old.previous_question_id !== value.previous_question_id
                     || old.order_known !== value.order_known
                 );
-                if (!old || old.auto_policy !== 1 || old.protocol !== 2
+                if (!old || old.auto_policy !== 1 || old.protocol !== 3
                     || !old.snapshot_stable || linkChanged) {
                     // Changed order metadata must reach the server even if the
                     // unchanged question/answer was previously acknowledged.
-                    additions[key] = {...value, ...(!linkChanged && old?.synced_at
-                        ? {synced_at: old.synced_at} : {})};
+                    additions[key] = {
+                        ...value,
+                        ...(!linkChanged && old ? {
+                            ...(old.classification_state ? {
+                                classification_state: old.classification_state,
+                                classifier_decision: old.classifier_decision,
+                                classifier_reason: old.classifier_reason,
+                                admission_token: old.admission_token
+                            } : {}),
+                            ...(old.synced_at ? {synced_at: old.synced_at} : {})
+                        } : {})
+                    };
                 }
             }
             if (Object.keys(additions).length) await chrome.storage.local.set(additions);

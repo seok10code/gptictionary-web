@@ -44,7 +44,7 @@
             if (!cid) { extras(null, []); paint(on, on ? '대화를 시작하면 자동으로 감지합니다' : '자동 감지 꺼짐'); return; }
             const latest = all[`gptic:status:${cid}`];
             const records = Object.entries(all).filter(([key,item]) => key.startsWith(`gptic:draft:${cid}:`) && item?.auto_policy === 1).map(([,item])=>item);
-            const pending = records.filter(item=>!item.synced_at);
+            const pending = records.filter(item=>!item.synced_at && item.classification_state !== 'rejected');
             const sync = all['gptic:sync-status'];
             const stale = latest?.at && Date.now() - Date.parse(latest.at) > 45000;
             const problem = on && (latest?.error || (pending.length && sync?.error) || (!latest || stale ? '현재 페이지의 감지 응답이 없거나 오래되었습니다. 확장을 업데이트한 직후라면 이 ChatGPT 탭을 한 번 새로고침해 주세요.' : ''));
@@ -64,12 +64,15 @@
                     extras(latest, records, '화면에 메시지는 있지만 질문/답변 ID를 아직 확인하지 못했습니다.');
                 } else if (latest.latestStreaming) {
                     paint(on, '답변 작성 중 · 아직 전송하지 않았습니다', question);
-                } else if (latest.latestEligible === false) {
-                    paint(on, '최근 질문은 영어 학습 후보가 아닙니다', question);
+                } else if (current?.classification_state === 'rejected') {
+                    paint(on, 'GPT가 영어 학습 요청으로 분류하지 않았습니다', question);
+                    extras(latest, records, current.classifier_reason || '질문만 보고 영어 학습 요청이 아니라고 판단했습니다.');
                 } else if (current?.synced_at) {
                     paint(on, '최근 질문 서버 접수 완료', question);
+                } else if (current?.classification_state === 'accepted') {
+                    paint(on, 'GPT 분류 완료 · 답변을 서버에 전송 중', question);
                 } else if (current) {
-                    paint(on, '최근 질문 자동 전송 대기 중', question);
+                    paint(on, '질문을 서버 GPT가 분류 중', question);
                 } else {
                     paint(on, '최근 답변을 확인 중 · 아직 접수되지 않았습니다', question || '답변 완료 후 보통 20~30초 정도 걸립니다.');
                 }
