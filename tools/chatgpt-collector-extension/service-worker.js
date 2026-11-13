@@ -104,7 +104,10 @@ async function syncDrafts() {
                 content_hash: current.content_hash,
                 protocol: 3,
                 admission_token: current.admission_token,
-                previous_question_id: current.previous_question_id ?? null,
+                // Only a GPT-confirmed follow-up depends on an earlier job.
+                // Direct requests must not be blocked by a rejected question.
+                previous_question_id: current.classifier_decision === 'followup'
+                    ? (current.previous_question_id ?? null) : null,
                 order_known: current.order_known === true,
                 snapshot_stable: true,
                 captured_at: current.captured_at

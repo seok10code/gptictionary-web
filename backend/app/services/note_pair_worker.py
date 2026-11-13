@@ -34,11 +34,24 @@ def existing_document(db,note):
 
 def candidates(db,turn,previous):
     # Indexed metadata search, then bounded recent fallback. Raw histories are not read.
-    words=list(dict.fromkeys(re.findall(r'[A-Za-z][A-Za-z-]{2,}|[가-힣]{2,}',turn['question'])))[:12]
+    # Ignore generic question scaffolding and broad subject labels. Matching a
+    # shared word such as "오늘" or a bad legacy subject such as "날씨" must not
+    # make an unrelated note eligible for an update.
+    generic={'오늘','영어','영어로','영문','영문으로','어떻게','말해','말하면',
+        '표현','표현해','알려줘','알려','질문','문장','좀','이거','그거','today',
+        'english','in','how','say','tell','please'}
+    raw_words=re.findall(r'[A-Za-z][A-Za-z-]{2,}|[가-힣]{2,}',turn['question'])
+    words=[]
+    for raw in raw_words:
+        word=raw.lower()
+        word=re.sub(r'(?:으로|에서|에게|한테|라고|다고|은|는|이|가|을|를|에|로)$','',word)
+        if len(word)>=2 and word not in generic and word not in words:
+            words.append(word)
+    words=words[:12]
     checks=[]
     for word in words:
         if word in {'영어로','설명해','알려줘','어떻게','예문으로','차이를','구조와'}:continue
-        for col in (EnglishNote.title,EnglishNote.subject,EnglishNote.keywords):checks.append(col.contains(word,autoescape=True))
+        for col in (EnglishNote.title,EnglishNote.keywords):checks.append(col.contains(word,autoescape=True))
     managed=db.query(AutoTopic.key).filter(AutoTopic.note_id==EnglishNote.id).exists()
     active=db.query(AutoTopic.key).filter(AutoTopic.note_id==EnglishNote.id,AutoTopic.active.is_(True)).exists()
     paired=db.query(NotePairDocument.note_id).filter(NotePairDocument.note_id==EnglishNote.id).exists()
