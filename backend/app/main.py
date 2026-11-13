@@ -41,6 +41,7 @@ async def auth_middleware(request: Request, call_next):
         "/login",
         "/favicon.ico",
         "/api/collector/snapshots",
+        "/api/collector/classify",
     ]
 
     if (
