@@ -143,17 +143,35 @@ def normalize_section(section,sid,section_key):
         result['blocks'].append(b)
     return result
 
+class EmptyNoteEdit(ValueError):
+    pass
+
+
 def edit_pair(turn,existing,job_id):
     if len(json.dumps(existing,ensure_ascii=False).encode())+len(turn['answer'].encode())>100000:
         raise ValueError('노트/새 답변이 편집 크기 한도를 넘습니다. 기존 노트는 유지했습니다.')
     candidates={f'q{i}':quote for i,quote in enumerate(evidence_choices(turn['answer']))}
-    output=ask(edit_schema(turn,existing),EDIT_PROMPT,{'source_id':turn['source_id'],'question':turn['question'],
-        'answer':turn['answer'],'evidence_candidates':candidates,'existing_note':existing}).model_dump(mode='json')
-    for edit in output['edits']:
-        evidence_id=edit.pop('evidence_id')
-        if evidence_id not in candidates:raise ValueError('새 답변에 없는 근거 번호입니다.')
-        edit['evidence_quote']=candidates[evidence_id]
-    return apply_edits(turn,existing,output,job_id)
+    schema=edit_schema(turn,existing)
+    payload={'source_id':turn['source_id'],'question':turn['question'],
+        'answer':turn['answer'],'evidence_candidates':candidates,'existing_note':existing}
+
+    def request_edits(prompt):
+        output=ask(schema,prompt,payload).model_dump(mode='json')
+        for edit in output['edits']:
+            evidence_id=edit.pop('evidence_id')
+            if evidence_id not in candidates:raise ValueError('새 답변에 없는 근거 번호입니다.')
+            edit['evidence_quote']=candidates[evidence_id]
+        return apply_edits(turn,existing,output,job_id)
+
+    try:
+        return request_edits(EDIT_PROMPT)
+    except EmptyNoteEdit:
+        return request_edits(EDIT_PROMPT + (
+            '\n이전 편집은 선택한 예문을 제외하자 남는 본문이 없어 저장되지 않았다. '
+            '답변에 있는 핵심 개념과 차이를 paragraph, list 또는 formula로 먼저 작성한다. '
+            '예문은 선택 사항이다. 원문의 설명과 근거를 사용하고, 설명을 지어내지 않는다.'
+        ))
+
 
 def source_term_label(cell,source):
     """Only short coordination labels of individually sourced single terms.
@@ -187,6 +205,7 @@ def apply_edits(turn,existing,output,job_id):
     # Keep that title; the editor cannot rename a note as a side effect of body edits.
     result['title']=existing['title'];result['summary']=''
     sections=result['sections'];positions={s['key']:i for i,s in enumerate(sections)}
+    applied=False
     modified=set();allowed=text_key(turn['answer']+'\n'+json.dumps(existing,ensure_ascii=False))
     label_source=turn['question']+'\n'+turn['answer']+'\n'+plain_body(existing)
     pairs=source_inventory([turn])
@@ -239,12 +258,13 @@ def apply_edits(turn,existing,output,job_id):
             elif not optional_examples:
                 raise ValueError('핵심 표에 남길 행이 없습니다.')
         new['blocks']=kept_blocks
-        if not new['blocks']:raise ValueError('예문 외에 저장할 설명이 없습니다.')
+        if not new['blocks']:continue
+        applied=True
         if edit['action']=='replace':
             new['source_ids']=list(dict.fromkeys(sections[positions[key]].get('source_ids',[])+[turn['source_id']]))
             sections[positions[key]]=new
         else:sections.append(new)
-    if not sections:raise ValueError('빈 노트는 저장하지 않습니다.')
+    if not applied:raise EmptyNoteEdit('예문 외에 저장할 설명이 없습니다.')
     if len(sections)>40:raise ValueError('노트 구역 한도를 넘습니다.')
     result['semantic_verification']='not_automatically_verified'
     return result

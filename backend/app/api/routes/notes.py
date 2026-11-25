@@ -5,7 +5,7 @@ import secrets
 from datetime import date, datetime, timezone
 from pathlib import Path
 from urllib.parse import urlencode, urlsplit
-from sqlalchemy import or_, text
+from sqlalchemy import bindparam, inspect, or_, text
 
 from fastapi import APIRouter, Depends, Form, HTTPException, Query, Request
 from fastapi.responses import JSONResponse, RedirectResponse, Response
@@ -356,6 +356,31 @@ def edit_note(note_id:int,request:Request,csrf:str=Form(...),title:str=Form(...)
     return RedirectResponse(f"/notes/{note_id}",303)
 
 
+def delete_note_quiz_rows(db, note_ids):
+    connection = db.connection()
+    schema = inspect(connection)
+    if not schema.has_table("english_note_quizzes"):
+        return
+
+    for table in ("english_note_quiz_tickets", "english_note_quiz_attempts"):
+        if schema.has_table(table):
+            connection.execute(text(f"""
+                DELETE FROM {table}
+                WHERE quiz_id IN (
+                    SELECT id FROM english_note_quizzes
+                    WHERE section_id IN (
+                        SELECT id FROM english_note_sections WHERE note_id IN :note_ids
+                    )
+                )
+            """).bindparams(bindparam("note_ids", expanding=True)), {"note_ids": note_ids})
+    connection.execute(text("""
+        DELETE FROM english_note_quizzes
+        WHERE section_id IN (
+            SELECT id FROM english_note_sections WHERE note_id IN :note_ids
+        )
+    """).bindparams(bindparam("note_ids", expanding=True)), {"note_ids": note_ids})
+
+
 @router.post("/notes/delete-all")
 def delete_all_notes(request:Request,csrf:str=Form(...),db:Session=Depends(get_db)):
     check_csrf(request,csrf)
@@ -379,34 +404,7 @@ def delete_all_notes(request:Request,csrf:str=Form(...),db:Session=Depends(get_d
             synchronize_session=False)
         db.query(NoteSourceLink).filter(NoteSourceLink.note_id.in_(note_ids)).delete(
             synchronize_session=False)
-        # Delete quiz children before sections to satisfy foreign keys.
-        db.connection().exec_driver_sql("""
-            DELETE FROM english_note_quiz_tickets
-            WHERE quiz_id IN (
-                SELECT id FROM english_note_quizzes
-                WHERE section_id IN (
-                    SELECT id FROM english_note_sections
-                    WHERE note_id IN (SELECT id FROM english_notes)
-                )
-            )
-        """)
-        db.connection().exec_driver_sql("""
-            DELETE FROM english_note_quiz_attempts
-            WHERE quiz_id IN (
-                SELECT id FROM english_note_quizzes
-                WHERE section_id IN (
-                    SELECT id FROM english_note_sections
-                    WHERE note_id IN (SELECT id FROM english_notes)
-                )
-            )
-        """)
-        db.connection().exec_driver_sql("""
-            DELETE FROM english_note_quizzes
-            WHERE section_id IN (
-                SELECT id FROM english_note_sections
-                WHERE note_id IN (SELECT id FROM english_notes)
-            )
-        """)
+        delete_note_quiz_rows(db, note_ids)
         db.query(NoteSection).filter(NoteSection.note_id.in_(note_ids)).delete(
             synchronize_session=False)
         db.query(EnglishNote).filter(EnglishNote.id.in_(note_ids)).delete(
@@ -438,40 +436,7 @@ def delete_note(note_id:int,request:Request,csrf:str=Form(...),db:Session=Depend
             {AutoTopic.note_id:None,AutoTopic.section_id:None,AutoTopic.active:False},synchronize_session=False)
         db.query(NotePairDocument).filter_by(note_id=note_id).delete(synchronize_session=False)
         db.query(NoteSourceLink).filter_by(note_id=note_id).delete(synchronize_session=False)
-        # Delete quiz children before sections to satisfy their foreign keys.
-        db.connection().exec_driver_sql(
-            """
-            DELETE FROM english_note_quiz_tickets
-            WHERE quiz_id IN (
-                SELECT id FROM english_note_quizzes
-                WHERE section_id IN (
-                    SELECT id FROM english_note_sections WHERE note_id = %s
-                )
-            )
-            """,
-            (note_id,),
-        )
-        db.connection().exec_driver_sql(
-            """
-            DELETE FROM english_note_quiz_attempts
-            WHERE quiz_id IN (
-                SELECT id FROM english_note_quizzes
-                WHERE section_id IN (
-                    SELECT id FROM english_note_sections WHERE note_id = %s
-                )
-            )
-            """,
-            (note_id,),
-        )
-        db.connection().exec_driver_sql(
-            """
-            DELETE FROM english_note_quizzes
-            WHERE section_id IN (
-                SELECT id FROM english_note_sections WHERE note_id = %s
-            )
-            """,
-            (note_id,),
-        )
+        delete_note_quiz_rows(db, [note_id])
         db.query(NoteSection).filter_by(note_id=note_id).delete(synchronize_session=False)
         db.delete(note);db.commit()
     except HTTPException:
