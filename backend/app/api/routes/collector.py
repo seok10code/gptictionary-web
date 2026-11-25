@@ -1,7 +1,6 @@
 import hashlib
 import hmac
 import json
-import logging
 import os
 from datetime import datetime, timedelta
 
@@ -17,8 +16,6 @@ from backend.app.models.note_source_image import NoteSourceImage
 from backend.app.services.note_source_store import save_source
 
 router = APIRouter()
-logger = logging.getLogger(__name__)
-
 
 
 class CollectorClassificationRequest(BaseModel):
@@ -28,7 +25,6 @@ class CollectorClassificationRequest(BaseModel):
     question_id: str = Field(min_length=1, max_length=255)
     previous_question_id: str | None = Field(default=None, max_length=255)
     question: str = Field(min_length=1, max_length=20000)
-    answer: str = Field(min_length=1, max_length=1000000)
 
 
 class CollectorSnapshot(BaseModel):
@@ -85,7 +81,7 @@ def require_allowed_database(db: Session):
 
 def question_fingerprint(item: CollectorClassificationRequest) -> str:
     raw = json.dumps(
-        [item.conversation_id, item.question_id, item.question, item.answer],
+        [item.conversation_id, item.question_id, item.question],
         ensure_ascii=False,
         separators=(",", ":"),
     )
@@ -126,63 +122,37 @@ def classify_collector_question(
     if payload.identity_checked is not True or payload.source_conversation_id != payload.conversation_id:
         raise HTTPException(400, "대화 ID 검증을 통과하지 못했습니다.")
 
-    from backend.app.models.english_note import NoteSource
-    from backend.app.models.english_note import NoteSource
     parent = None
-    previous_question_id = payload.previous_question_id
-    # A stale or malformed client draft must never make this turn its own parent.
-    if previous_question_id == payload.question_id:
-        previous_question_id = None
-    if previous_question_id:
+    if payload.previous_question_id:
+        from backend.app.models.english_note import NoteSource
         parent = db.query(NoteSource).filter_by(
             conversation_id=payload.conversation_id,
-            message_id=previous_question_id,
-        ).filter(NoteSource.message_id != payload.question_id).first()
-
-    # If the immediate previous turn was not admitted, provide the latest
-    # earlier admitted question as context. Never select the current turn.
-    if parent is None:
-        parent = db.query(NoteSource).filter_by(
-            conversation_id=payload.conversation_id,
-        ).filter(NoteSource.message_id != payload.question_id).order_by(
-            NoteSource.created_at.desc(), NoteSource.id.desc()
+            message_id=payload.previous_question_id,
         ).first()
 
     try:
         from backend.app.services.note_intent_classifier import classify_learning_intent
         decision = classify_learning_intent(
             payload.question,
-            answer=payload.answer,
             parent_question=parent.question if parent else None,
         )
     except Exception as error:
         # Do not accept on model/API failure; the extension retries later.
         raise HTTPException(503, "질문 분류를 완료하지 못했습니다. 자동 재시도합니다.") from error
 
-    # Avoid dropping a clear register-change follow-up when the classifier
-    # abstains despite having an admitted parent question.
     accepted = decision.decision in {"direct", "followup"}
     if accepted and (not decision.evidence_quote or decision.evidence_quote not in payload.question):
         accepted = False
-        decision.reason = "GPT가 질문에서 학습 요청 근거를 확인하지 못했습니다."
+        decision.reason = "질문 안에서 학습 요청 근거를 확인하지 못했습니다."
     if decision.decision == "followup" and parent is None:
         accepted = False
         decision.reason = "이전의 승인된 영어 학습 질문을 찾지 못했습니다."
 
-    classify_decision = decision.decision if accepted else (
-        "other" if decision.decision == "other" else "uncertain"
-    )
-    print(
-        f"collector classify question_id={payload.question_id} "
-        f"decision={classify_decision} accepted={accepted}",
-        flush=True,
-    )
     return {
         "question_id": payload.question_id,
         "accepted": accepted,
         "decision": decision.decision if accepted else ("other" if decision.decision == "other" else "uncertain"),
         "reason": decision.reason,
-        "previous_question_id": parent.message_id if accepted and decision.decision == "followup" and parent else None,
         "admission_token": make_admission_token(secret, payload) if accepted else None,
     }
 
