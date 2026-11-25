@@ -22,6 +22,11 @@ linguistic concepts and the request as a whole when they make it clear. A questi
 learning how English grammar forms are categorized, contrasted, or used is direct even if
 it does not explicitly name English. If another language is explicitly the subject, classify
 it as other. If the target language genuinely cannot be inferred, choose uncertain.
+Judge whether the learning request is identifiable, independently of whether you have enough detail
+to answer it fully. Once the question identifies an English-learning topic and asks something
+about it, choose direct. Informal wording, typos, a trailing fragment, and missing background
+do not make an otherwise identifiable request uncertain. Quote the clear part of the original
+question verbatim as evidence. This does not turn quoted or embedded text into a request.
 Choose followup only when the current question continues or corrects the provided previously admitted
 English-learning question. If there is no previous admitted question, never choose followup.
 Choose other for unrelated daily conversation, weather/general knowledge, coding/server/extension/database
