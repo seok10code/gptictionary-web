@@ -75,6 +75,12 @@
                     old.previous_question_id !== value.previous_question_id
                     || old.order_known !== value.order_known
                 );
+                // ACKED_DRAFT_LINK_CHANGE_GUARD_20261124
+                // A history rescan can recalculate predecessor metadata. Do
+                // not turn an already acknowledged Q/A into a new draft just
+                // because that relationship changed; otherwise its stored
+                // synced_at is lost and the same question is posted again.
+                if (old?.synced_at && linkChanged) continue;
                 if (!old || old.auto_policy !== 1 || old.protocol !== 3
                     || !old.snapshot_stable || linkChanged) {
                     // Changed order metadata must reach the server even if the
@@ -113,6 +119,16 @@
     chrome.storage.onChanged.addListener((changes, area) => {
         if (area === 'local' && Object.keys(changes).some(k => k === GPTIC_POLICY.enabledKey)) schedule();
     });
+    chrome.runtime.onMessage.addListener((message, sender, reply) => {
+        if (sender.id !== chrome.runtime.id || message?.type !== 'GPTIC_CAPTURE_NOW') return;
+        capture().then(() => reply({ok: true})).catch(error => reply({ok: false, error: error.message}));
+        return true;
+    });
+    const resumeCapture = () => { if (!document.hidden) schedule(); };
+    window.addEventListener('focus', resumeCapture);
+    window.addEventListener('pageshow', resumeCapture);
+    document.addEventListener('visibilitychange', resumeCapture);
+    window.addEventListener('online', resumeCapture);
     setInterval(capture, 10000);
     schedule();
 })();
