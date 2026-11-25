@@ -1,11 +1,13 @@
 import hmac
+import hashlib
 import secrets
-from datetime import datetime
+from datetime import date, datetime, timezone
 from pathlib import Path
 from urllib.parse import urlencode, urlsplit
+from sqlalchemy import or_, text
 
 from fastapi import APIRouter, Depends, Form, HTTPException, Query, Request
-from fastapi.responses import RedirectResponse
+from fastapi.responses import JSONResponse, RedirectResponse
 from fastapi.templating import Jinja2Templates
 from sqlalchemy import or_
 from sqlalchemy.orm import Session
@@ -47,6 +49,14 @@ def local_day_utc_range(value):
         return None
 
 
+def local_datetime_label(value):
+    from zoneinfo import ZoneInfo
+    if value is None:
+        return ""
+    # Database note timestamps are stored as naive UTC datetimes.
+    return value.replace(tzinfo=timezone.utc).astimezone(ZoneInfo("Asia/Seoul")).strftime("%Y.%m.%d %H:%M")
+
+
 def check_csrf(request, csrf):
     expected = request.session.get("english_notes_csrf", "")
     origin = request.headers.get("origin")
@@ -67,12 +77,65 @@ def note_scope(db):
     return or_(paired, current, ~managed)
 
 
+def editable_document_text(document):
+    """Plain-text editing view; headings stay editable and tables remain readable."""
+    lines=[]
+    for section in document.get("sections",[]):
+        heading=str(section.get("heading","")).strip()
+        if heading:
+            lines.extend(["## "+heading,""])
+        for block in section.get("blocks",[]):
+            kind=block.get("kind")
+            if kind=="list":
+                lines.extend("- "+str(item) for item in block.get("items",[]))
+            elif kind in {"table","examples","source_examples"}:
+                headers=block.get("headers",[])
+                if headers: lines.append(" | ".join(str(cell) for cell in headers))
+                lines.extend(" | ".join(str(cell) for cell in row) for row in block.get("rows",[]))
+            elif kind=="dialogue":
+                lines.extend(" | ".join(str(cell) for cell in row) for row in block.get("rows",[]))
+            elif "text" in block:
+                lines.append(str(block["text"]))
+            lines.append("")
+    return "\n".join(lines).strip()
+
+
+def editable_document(title, body, source_ids):
+    sections=[]
+    heading="노트 내용"
+    paragraphs=[]
+    def flush():
+        nonlocal paragraphs
+        text="\n".join(paragraphs).strip()
+        if text:
+            sections.append({"key":f"manual-{len(sections)+1}","heading":heading,
+                "source_ids":source_ids,"blocks":[{"kind":"paragraph","text":text,"evidence_ids":[]}]})
+        paragraphs=[]
+    for line in body.splitlines():
+        if line.startswith("## "):
+            flush(); heading=line[3:].strip()[:255] or "노트 내용"
+        else:
+            paragraphs.append(line)
+    flush()
+    if not sections:
+        raise HTTPException(400,"노트 내용은 비워둘 수 없습니다.")
+    return {"format":"pair_textbook","version":1,"title":title,"summary":"","sections":sections,
+            "semantic_verification":"manually_edited"}
+
+
+def visible_note_or_404(db,note_id):
+    note=db.get(EnglishNote,note_id)
+    if note is None or db.query(EnglishNote.id).filter(EnglishNote.id==note_id,note_scope(db)).first() is None:
+        raise HTTPException(404,"노트를 찾을 수 없습니다.")
+    return note
+
+
 @router.get("/notes")
 def notes_page(request: Request, state: str = "all", kind: str = "",
                q: str = Query("", max_length=200), page: int = Query(1, ge=1, le=100000),
                day: str = Query("", max_length=10), sort: str = "newest",
                db: Session = Depends(get_db)):
-    token(request)
+    csrf=token(request)
     if sort not in {"newest", "oldest"}:
         sort = "newest"
     day_range = local_day_utc_range(day) if day else None
@@ -123,6 +186,7 @@ def notes_page(request: Request, state: str = "all", kind: str = "",
             preview=plain_body(pair_doc.document)[:240]
             view=None
         cards.append({"note": note, "title": doc.get("title") if summary else note.title, "preview": preview,
+                      "updated_label": local_datetime_label(note.updated_at),
                       "tags": note_tags(note.title, note.subject, note.keywords,
                           document=pair_doc.document if pair_doc else doc,
                           stored_keywords=(((binding.data or {}).get("plan") or {}).get("note") or {}).get("keywords") if binding else None),
@@ -132,9 +196,30 @@ def notes_page(request: Request, state: str = "all", kind: str = "",
     def url(**changes):
         return "/notes?" + urlencode({"state": state, "kind": kind, "q": q, "page": page, "day": day, "sort": sort, **changes})
     return templates.TemplateResponse(request=request, name="notes_live.html", context={
-        "cards": cards, "counts": counts, "processing": processing, "state": state, "kind": kind, "q": q,
+        "cards": cards, "counts": counts, "processing": processing, "csrf": csrf, "state": state, "kind": kind, "q": q,
         "kinds": KINDS, "page": page, "has_more": len(rows)>20, "url": url, "day": day, "sort": sort,
     })
+
+
+@router.get("/notes/calendar-days")
+def notes_calendar_days(year: int = Query(..., ge=2000, le=2100),
+                        month: int = Query(..., ge=1, le=12),
+                        db: Session = Depends(get_db)):
+    """Return note-update counts by Seoul calendar day for the date picker."""
+    from zoneinfo import ZoneInfo
+    first = date(year, month, 1)
+    next_month = date(year + (month == 12), 1 if month == 12 else month + 1, 1)
+    start = local_day_utc_range(first.isoformat())[0]
+    end = local_day_utc_range(next_month.isoformat())[0]
+    timestamps = db.query(EnglishNote.updated_at).filter(
+        note_scope(db), EnglishNote.updated_at >= start, EnglishNote.updated_at < end
+    ).all()
+    counts = {}
+    seoul = ZoneInfo("Asia/Seoul")
+    for (value,) in timestamps:
+        local_date = value.replace(tzinfo=timezone.utc).astimezone(seoul).date().isoformat()
+        counts[local_date] = counts.get(local_date, 0) + 1
+    return JSONResponse({"year": year, "month": month, "days": counts})
 
 
 @router.post("/notes/sources/{source_id}/analyze")
@@ -194,11 +279,194 @@ def note_detail(note_id: int, request: Request, page: int = Query(1, ge=1, le=10
             NoteSourceLink.note_id==note_id).order_by(NoteSource.id.desc()).limit(20).all()
     return templates.TemplateResponse(request=request, name="note_live_detail.html", context={
         "note": note, "sections": [current_section] if current_section else sections[:1], "sources": sources,
+        "updated_label": local_datetime_label(note.updated_at),
         "history": [section for section in sections[:20] if not current_section or section.id != current_section.id],
         "ready": ready, "managed": managed, "conversation": conversation,
         "study": study, "reading": reading_view(study), "document":document,
         "kinds": KINDS, "page": page, "has_more": len(sections)>20,
     })
+
+
+@router.get("/notes/{note_id:int}/edit")
+def edit_note_page(note_id:int,request:Request,db:Session=Depends(get_db)):
+    csrf=token(request)
+    note=visible_note_or_404(db,note_id)
+    pair_doc=db.get(NotePairDocument,note_id)
+    body=editable_document_text(pair_doc.document or {}) if pair_doc else ""
+    return templates.TemplateResponse(request=request,name="note_edit.html",context={
+        "note":note,"csrf":csrf,"body":body,"kinds":KINDS,"has_body":bool(pair_doc),
+    })
+
+
+@router.post("/notes/{note_id:int}/edit")
+def edit_note(note_id:int,request:Request,csrf:str=Form(...),title:str=Form(...),kind:str=Form(...),
+              subject:str=Form(""),keywords:str=Form(""),body:str=Form(""),db:Session=Depends(get_db)):
+    check_csrf(request,csrf)
+    note=visible_note_or_404(db,note_id)
+    from backend.app.services.note_learning import write_guard
+    try:
+        write_guard(db)
+        title=title.strip();subject=subject.strip();keywords=keywords.strip()
+        if not title or len(title)>255 or len(subject)>100 or len(keywords)>2000:
+            raise HTTPException(400,"제목·주제·검색어의 길이를 확인해 주세요.")
+        if kind not in KINDS:
+            raise HTTPException(400,"노트 종류를 확인해 주세요.")
+        pair_doc=db.get(NotePairDocument,note_id)
+        note.title=title;note.kind=kind;note.subject=subject;note.keywords=keywords
+        note.version+=1;note.updated_at=datetime.utcnow()
+        if pair_doc:
+            if not body.strip() or len(body)>40000:
+                raise HTTPException(400,"본문은 비워둘 수 없고 40,000자 이하여야 합니다.")
+            source_ids=[]
+            try:
+                source_ids=list(dict.fromkeys(int(sid) for section in (pair_doc.document or {}).get("sections",[])
+                    for sid in section.get("source_ids",[]) if isinstance(sid,int) and not isinstance(sid,bool)))
+            except (TypeError,ValueError):
+                source_ids=[]
+            pair_doc.document=editable_document(title,body,source_ids)
+            pair_doc.revision+=1;pair_doc.updated_at=datetime.utcnow()
+            latest=db.query(NoteSection).filter_by(note_id=note_id).order_by(NoteSection.version.desc()).first()
+            if latest:
+                version=max(note.version,latest.version+1)
+                digest=hashlib.sha256((str(note.id)+":"+str(version)+":"+body.strip()).encode("utf-8")).hexdigest()
+                db.add(NoteSection(note_id=note_id,source_id=latest.source_id,version=version,
+                    content_hash=digest,heading=title,body=body.strip(),recall_question=latest.recall_question))
+                note.version=version
+        db.commit()
+    except HTTPException:
+        db.rollback();raise
+    except NoteProblem as exc:
+        db.rollback();raise HTTPException(409,str(exc)) from None
+    except Exception:
+        db.rollback();raise
+    return RedirectResponse(f"/notes/{note_id}",303)
+
+
+@router.post("/notes/delete-all")
+def delete_all_notes(request:Request,csrf:str=Form(...),db:Session=Depends(get_db)):
+    check_csrf(request,csrf)
+    from backend.app.services.note_learning import write_guard
+    try:
+        write_guard(db)
+        note_ids=[row[0] for row in db.query(EnglishNote.id).all()]
+        if not note_ids:
+            return RedirectResponse("/notes",303)
+        active_job=db.query(NotePairJob.id).filter(NotePairJob.note_id.in_(note_ids),
+            NotePairJob.status.in_(["waiting","running","retry"])).first()
+        if active_job:
+            raise HTTPException(409,"노트에 연결된 수집 작업이 진행 중입니다. 작업이 끝난 뒤 전체 삭제해 주세요.")
+        # Keep original conversations and queue history; remove note-owned records.
+        db.query(NotePairJob).filter(NotePairJob.note_id.in_(note_ids)).update(
+            {NotePairJob.note_id:None},synchronize_session=False)
+        db.query(AutoTopic).filter(AutoTopic.note_id.in_(note_ids)).update(
+            {AutoTopic.note_id:None,AutoTopic.section_id:None,AutoTopic.active:False},
+            synchronize_session=False)
+        db.query(NotePairDocument).filter(NotePairDocument.note_id.in_(note_ids)).delete(
+            synchronize_session=False)
+        db.query(NoteSourceLink).filter(NoteSourceLink.note_id.in_(note_ids)).delete(
+            synchronize_session=False)
+        # Delete quiz children before sections to satisfy foreign keys.
+        db.connection().exec_driver_sql("""
+            DELETE FROM english_note_quiz_tickets
+            WHERE quiz_id IN (
+                SELECT id FROM english_note_quizzes
+                WHERE section_id IN (
+                    SELECT id FROM english_note_sections
+                    WHERE note_id IN (SELECT id FROM english_notes)
+                )
+            )
+        """)
+        db.connection().exec_driver_sql("""
+            DELETE FROM english_note_quiz_attempts
+            WHERE quiz_id IN (
+                SELECT id FROM english_note_quizzes
+                WHERE section_id IN (
+                    SELECT id FROM english_note_sections
+                    WHERE note_id IN (SELECT id FROM english_notes)
+                )
+            )
+        """)
+        db.connection().exec_driver_sql("""
+            DELETE FROM english_note_quizzes
+            WHERE section_id IN (
+                SELECT id FROM english_note_sections
+                WHERE note_id IN (SELECT id FROM english_notes)
+            )
+        """)
+        db.query(NoteSection).filter(NoteSection.note_id.in_(note_ids)).delete(
+            synchronize_session=False)
+        db.query(EnglishNote).filter(EnglishNote.id.in_(note_ids)).delete(
+            synchronize_session=False)
+        db.commit()
+    except HTTPException:
+        db.rollback();raise
+    except NoteProblem as exc:
+        db.rollback();raise HTTPException(409,str(exc)) from None
+    except Exception:
+        db.rollback();raise
+    return RedirectResponse("/notes",303)
+
+
+@router.post("/notes/{note_id:int}/delete")
+def delete_note(note_id:int,request:Request,csrf:str=Form(...),db:Session=Depends(get_db)):
+    check_csrf(request,csrf)
+    note=visible_note_or_404(db,note_id)
+    from backend.app.services.note_learning import write_guard
+    try:
+        write_guard(db)
+        active_job=db.query(NotePairJob.id).filter(NotePairJob.note_id==note_id,
+            NotePairJob.status.in_(["waiting","running","retry"])).first()
+        if active_job:
+            raise HTTPException(409,"이 노트에 연결된 수집 작업이 진행 중입니다. 작업이 끝난 뒤 삭제해 주세요.")
+        # Preserve source conversations and queue history; remove only note-owned rows.
+        db.query(NotePairJob).filter(NotePairJob.note_id==note_id).update({NotePairJob.note_id:None},synchronize_session=False)
+        db.query(AutoTopic).filter(AutoTopic.note_id==note_id).update(
+            {AutoTopic.note_id:None,AutoTopic.section_id:None,AutoTopic.active:False},synchronize_session=False)
+        db.query(NotePairDocument).filter_by(note_id=note_id).delete(synchronize_session=False)
+        db.query(NoteSourceLink).filter_by(note_id=note_id).delete(synchronize_session=False)
+        # Delete quiz children before sections to satisfy their foreign keys.
+        db.connection().exec_driver_sql(
+            """
+            DELETE FROM english_note_quiz_tickets
+            WHERE quiz_id IN (
+                SELECT id FROM english_note_quizzes
+                WHERE section_id IN (
+                    SELECT id FROM english_note_sections WHERE note_id = %s
+                )
+            )
+            """,
+            (note_id,),
+        )
+        db.connection().exec_driver_sql(
+            """
+            DELETE FROM english_note_quiz_attempts
+            WHERE quiz_id IN (
+                SELECT id FROM english_note_quizzes
+                WHERE section_id IN (
+                    SELECT id FROM english_note_sections WHERE note_id = %s
+                )
+            )
+            """,
+            (note_id,),
+        )
+        db.connection().exec_driver_sql(
+            """
+            DELETE FROM english_note_quizzes
+            WHERE section_id IN (
+                SELECT id FROM english_note_sections WHERE note_id = %s
+            )
+            """,
+            (note_id,),
+        )
+        db.query(NoteSection).filter_by(note_id=note_id).delete(synchronize_session=False)
+        db.delete(note);db.commit()
+    except HTTPException:
+        db.rollback();raise
+    except NoteProblem as exc:
+        db.rollback();raise HTTPException(409,str(exc)) from None
+    except Exception:
+        db.rollback();raise
+    return RedirectResponse("/notes",303)
 
 
 @router.post("/notes/{note_id:int}/studied")

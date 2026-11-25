@@ -1,26 +1,49 @@
 {% extends "base.html" %}
 {% block content %}
-<link rel="stylesheet" href="/static/css/note-document.css?v=3">
-<link rel="stylesheet" href="/static/css/note-topic-map.css?v=2">
+<link rel="stylesheet" href="/static/css/note-document.css?v=4">
+<link rel="stylesheet" href="/static/css/note-topic-map.css?v=4">
 <section class="nd-index nm-index" aria-labelledby="nm-title">
   <header class="nd-header nm-header">
     <p class="nd-category">MY ENGLISH ARCHIVE</p>
     <h1 id="nm-title">영어 노트</h1>
     <p class="nd-subtitle">주제별로 모아보고, 저장 날짜를 골라 그날의 노트를 함께 복습하세요.</p>
   </header>
+  <div class="nm-page-actions">
+    <form action="/notes/delete-all" method="post" data-delete-all-notes>
+      <input type="hidden" name="csrf" value="{{ csrf }}">
+      <button type="submit" class="nm-delete-all">전체 노트 삭제</button>
+    </form>
+  </div>
   <form action="/notes" method="get" class="nd-search nm-search" role="search">
     <input name="q" value="{{ q }}" placeholder="찾고 싶은 표현이나 주제" aria-label="노트 검색">
     <select name="kind" aria-label="노트 종류">
       <option value="">모든 종류</option>
       {% for key,label in kinds.items() %}<option value="{{ key }}" {{ 'selected' if kind==key else '' }}>{{ label }}</option>{% endfor %}
     </select>
-    <label class="nm-day-label">저장일 <input type="date" name="day" value="{{ day }}" aria-label="저장 날짜"></label>
+    <div class="nm-date-picker" data-calendar-url="/notes/calendar-days" data-selected="{{ day }}">
+      <span class="nm-day-label-text">수정일</span>
+      <input type="hidden" name="day" value="{{ day }}" aria-label="노트 수정 날짜">
+      <button class="nm-calendar-trigger" type="button" aria-haspopup="dialog" aria-expanded="false">
+        <span>{{ day if day else '날짜 선택' }}</span><span aria-hidden="true">▦</span>
+      </button>
+      <div class="nm-calendar" role="dialog" aria-label="노트 수정 날짜 선택" hidden>
+        <div class="nm-calendar-toolbar">
+          <button type="button" data-month-step="-1" aria-label="이전 달">‹</button>
+          <strong data-calendar-heading></strong>
+          <button type="button" data-month-step="1" aria-label="다음 달">›</button>
+        </div>
+        <div class="nm-calendar-grid" role="grid" aria-live="polite"></div>
+        <div class="nm-calendar-footer">
+          <p class="nm-calendar-legend"><span aria-hidden="true">●</span> 수정된 노트가 있는 날</p>
+          {% if day %}<a class="nm-clear-day" href="{{ url(day='',page=1) }}">날짜 해제</a>{% endif %}
+        </div>
+      </div>
+    </div>
     <select name="sort" aria-label="노트 정렬">
       <option value="newest" {{ 'selected' if sort=='newest' else '' }}>최신순</option>
       <option value="oldest" {{ 'selected' if sort=='oldest' else '' }}>오래된순</option>
     </select>
     <button type="submit">검색</button>
-    {% if day %}<a class="nm-clear-day" href="{{ url(day='',page=1) }}">날짜 해제</a>{% endif %}
   </form>
   {% if cards %}
   {% set grouped=cards|groupby('note.kind') %}
@@ -37,7 +60,18 @@
             <summary><span class="nm-subject-toggle" aria-hidden="true"></span><span>{{ subject.grouper|trim or '기타 주제' }}</span><span class="nm-subject-count">{{ subject.list|length }}</span></summary>
             <ul class="nm-leaves">
               {% for card in subject.list %}
-              <li><a href="/notes/{{ card.note.id }}"><span class="nm-leaf-main"><span class="nm-leaf-title">{{ card.title }}</span>{% if card.tags %}<span class="nm-tags" aria-label="주요 내용">{% for tag in card.tags %}<span class="nm-tag">{{ tag }}</span>{% endfor %}</span>{% endif %}</span><span class="nm-open" aria-hidden="true">↗</span></a></li>
+              <li class="nm-note-item">
+                <a class="nm-note-link" href="/notes/{{ card.note.id }}"><span class="nm-leaf-main"><span class="nm-leaf-title">{{ card.title }}</span><time class="nm-updated" datetime="{{ card.note.updated_at.isoformat() }}Z">수정 {{ card.updated_label }}</time>{% if card.tags %}<span class="nm-tags" aria-label="주요 내용">{% for tag in card.tags %}<span class="nm-tag">{{ tag }}</span>{% endfor %}</span>{% endif %}</span><span class="nm-open" aria-hidden="true">↗</span></a>
+                <details class="nm-note-menu">
+                  <summary aria-label="{{ card.title }} 메뉴" title="노트 메뉴">⋯</summary>
+                  <div class="nm-note-menu-panel">
+                    <form action="/notes/{{ card.note.id }}/delete" method="post" data-delete-one-note>
+                      <input type="hidden" name="csrf" value="{{ csrf }}">
+                      <button type="submit">노트 삭제</button>
+                    </form>
+                  </div>
+                </details>
+              </li>
               {% endfor %}
             </ul>
           </details>
@@ -55,4 +89,6 @@
   {% endif %}
   {% if page>1 or has_more %}<nav class="nd-pagination" aria-label="노트 목록 페이지">{% if page>1 %}<a href="{{ url(page=page-1,state='all') }}">← 이전</a>{% endif %}<span>{{ page }}페이지</span>{% if has_more %}<a href="{{ url(page=page+1,state='all') }}">다음 →</a>{% endif %}</nav>{% endif %}
 </section>
+<script src="/static/js/note-calendar.js?v=1" defer></script>
+<script src="/static/js/note-list-actions.js?v=1" defer></script>
 {% endblock %}
