@@ -1,10 +1,11 @@
 {
   "manifest_version": 3,
   "name": "GPTictionary Collector",
-  "version": "0.6.0",
+  "version": "0.6.5",
   "description": "ChatGPT 영어 학습 대화를 자동 감지하고 서버로 전송합니다.",
   "permissions": [
     "activeTab",
+    "tabs",
     "scripting",
     "storage",
     "alarms"
@@ -32,6 +33,10 @@
     }
   ],
   "host_permissions": [
+    "https://chatgpt.com/*",
+    "https://chat.openai.com/*",
+    "https://*.oaiusercontent.com/*",
+    "https://*.oaistatic.com/*",
     "http://127.0.0.1:8000/*",
     "http://192.168.0.22:8000/*"
   ],

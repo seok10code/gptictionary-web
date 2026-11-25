@@ -1,5 +1,6 @@
 import hmac
 import hashlib
+import logging
 import secrets
 from datetime import date, datetime, timezone
 from pathlib import Path
@@ -7,11 +8,13 @@ from urllib.parse import urlencode, urlsplit
 from sqlalchemy import or_, text
 
 from fastapi import APIRouter, Depends, Form, HTTPException, Query, Request
-from fastapi.responses import JSONResponse, RedirectResponse
+from fastapi.responses import JSONResponse, RedirectResponse, Response
 from fastapi.templating import Jinja2Templates
 from sqlalchemy import or_
+from sqlalchemy.exc import ProgrammingError
 from sqlalchemy.orm import Session
 from backend.app.db.database import get_db
+from backend.app.models.note_source_image import NoteSourceImage
 from backend.app.models.english_note import EnglishNote, NoteSection, NoteSourceLink, NoteSource
 from backend.app.services.note_learning import KINDS, NoteProblem, study_note
 from backend.app.services.note_list_tags import note_tags
@@ -277,7 +280,18 @@ def note_detail(note_id: int, request: Request, page: int = Query(1, ge=1, le=10
         current_section=sections[0] if sections else None
         sources=source_query.join(NoteSourceLink,NoteSourceLink.source_id==NoteSource.id).filter(
             NoteSourceLink.note_id==note_id).order_by(NoteSource.id.desc()).limit(20).all()
+    answer_images = []
+    if sources:
+        try:
+            answer_images = db.query(NoteSourceImage.source_id, NoteSourceImage.digest).filter(
+                NoteSourceImage.source_id.in_([source.id for source in sources]),
+            ).order_by(NoteSourceImage.source_id, NoteSourceImage.digest).all()
+        except ProgrammingError as error:
+            if not error.orig.args or error.orig.args[0] != 1146:
+                raise
+            logging.getLogger(__name__).warning("Run migrate_note_source_images to enable note images")
     return templates.TemplateResponse(request=request, name="note_live_detail.html", context={
+        "answer_images": answer_images,
         "note": note, "sections": [current_section] if current_section else sections[:1], "sources": sources,
         "updated_label": local_datetime_label(note.updated_at),
         "history": [section for section in sections[:20] if not current_section or section.id != current_section.id],
@@ -467,6 +481,17 @@ def delete_note(note_id:int,request:Request,csrf:str=Form(...),db:Session=Depend
     except Exception:
         db.rollback();raise
     return RedirectResponse("/notes",303)
+
+
+@router.get("/notes/answer-images/{source_id:int}/{digest}")
+def answer_image(source_id: int, digest: str, db: Session = Depends(get_db)):
+    image = db.get(NoteSourceImage, (source_id, digest))
+    if image is None:
+        raise HTTPException(404, "이미지를 찾을 수 없습니다.")
+    return Response(
+        image.content, media_type=image.media_type,
+        headers={"X-Content-Type-Options": "nosniff", "Cache-Control": "private, max-age=86400"},
+    )
 
 
 @router.post("/notes/{note_id:int}/studied")

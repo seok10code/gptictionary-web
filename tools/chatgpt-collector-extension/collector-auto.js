@@ -29,7 +29,7 @@
                     group.answers.push(message);
                 }
             }
-            const pairs = groups.filter(g => g.question.message_id && g.answers.length);
+            const pairs = groups.filter(g => g.question.message_id && g.question.text && g.answers.length);
             const selected = GPTIC_POLICY.select(pairs);
             const records = {};
             let previous = null;
@@ -37,7 +37,10 @@
             const newest = groups.at(-1);
             const newestQuestionId = newest?.question.message_id;
             for (const [index, pair] of pairs.entries()) {
-                const answer = pair.answers.map(m => m.text).join('\n\n');
+                const images = [...new Set(pair.answers.flatMap(message => message.images || []))].slice(0, 4);
+                const answer = pair.answers.map(message => message.text).filter(Boolean).join('\n\n')
+                    || (images.length ? 'ChatGPT 답변 이미지' : '');
+                if (!answer) continue;
                 const answerId = pair.answers.at(-1).message_id;
                 const raw = JSON.stringify([cid, pair.question.message_id, answerId, pair.question.text, answer]);
                 const bytes = await crypto.subtle.digest('SHA-256', new TextEncoder().encode(raw));
@@ -54,7 +57,7 @@
                     records[`gptic:draft:${cid}:${hash}`] = {
                         conversation_id: cid, source_conversation_id: cid, identity_checked: true,
                         title: data.title, question_id: pair.question.message_id, answer_id: answerId,
-                        question: pair.question.text, answer, captured_at: new Date().toISOString(),
+                        question: pair.question.text, answer, images, captured_at: new Date().toISOString(),
                         stage: 'draft', auto_policy: 1, content_hash: hash, protocol: 3,
                         previous_question_id: previous, order_known: true, snapshot_stable: true
                     };

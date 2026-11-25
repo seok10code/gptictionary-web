@@ -4,13 +4,15 @@ import json
 import os
 from datetime import datetime, timedelta
 
-from fastapi import APIRouter, Depends, Header, HTTPException
+from fastapi import APIRouter, Depends, Header, HTTPException, Request
 from pydantic import BaseModel, Field
 from sqlalchemy import text
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
 from backend.app.db.database import get_db
+from backend.app.models.note_source_evidence import NoteSourceEvidence
+from backend.app.models.note_source_image import NoteSourceImage
 from backend.app.services.note_source_store import save_source
 
 router = APIRouter()
@@ -242,3 +244,49 @@ def receive_snapshots(
             item.content_hash for item in payload.snapshots
         ],
     }
+
+
+@router.post("/api/collector/sources/{source_id:int}/images")
+async def receive_answer_image(
+    source_id: int,
+    request: Request,
+    authorization: str | None = Header(None),
+    db: Session = Depends(get_db),
+):
+    require_collector_auth(authorization)
+    require_allowed_database(db)
+    evidence = db.query(NoteSourceEvidence.source_id).filter_by(
+        source_id=source_id, channel="browser",
+    ).first()
+    if evidence is None:
+        raise HTTPException(404, "수집된 답변을 찾을 수 없습니다.")
+
+    content = bytearray()
+    async for chunk in request.stream():
+        if len(content) + len(chunk) > 8 * 1024 * 1024:
+            raise HTTPException(413, "이미지가 너무 큽니다.")
+        content.extend(chunk)
+
+    if content.startswith(b"\x89PNG\r\n\x1a\n"):
+        media_type = "image/png"
+    elif content.startswith(b"\xff\xd8\xff"):
+        media_type = "image/jpeg"
+    elif content.startswith((b"GIF87a", b"GIF89a")):
+        media_type = "image/gif"
+    elif content.startswith(b"RIFF") and content[8:12] == b"WEBP":
+        media_type = "image/webp"
+    else:
+        raise HTTPException(415, "지원하지 않는 이미지 형식입니다.")
+
+    digest = hashlib.sha256(content).hexdigest()
+    if db.get(NoteSourceImage, (source_id, digest)) is None:
+        db.add(NoteSourceImage(
+            source_id=source_id, digest=digest, media_type=media_type, content=bytes(content),
+        ))
+        try:
+            db.commit()
+        except IntegrityError:
+            db.rollback()
+            if db.get(NoteSourceImage, (source_id, digest)) is None:
+                raise
+    return {"stored": True}

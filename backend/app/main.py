@@ -1,3 +1,4 @@
+import re
 import os
 from pathlib import Path
 
@@ -47,6 +48,10 @@ async def auth_middleware(request: Request, call_next):
     if (
         request.url.path.startswith("/static")
         or request.url.path in public_paths
+        or (
+            request.method == "POST"
+            and re.fullmatch(r"/api/collector/sources/[0-9]+/images", request.url.path)
+        )
     ):
         return await call_next(request)
 

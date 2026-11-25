@@ -20,6 +20,9 @@
 </section>{% endfor %}</div>
 {% else %}{% for section in sections %}<section class="nd-section nd-paragraph">{{ section.body|note_document_text }}</section>{% endfor %}{% endif %}
 </article>
+{% if answer_images %}<section class="nd-section"><h2>답변 이미지</h2>
+{% for image in answer_images %}<img src="/notes/answer-images/{{ image.source_id }}/{{ image.digest }}" alt="ChatGPT 답변 이미지" loading="lazy" style="display:block;max-width:100%;height:auto;margin-block:1rem">{% endfor %}
+</section>{% endif %}
 {% if sources %}<details class="nd-originals"><summary>대화 원문</summary><ul>{% for source in sources %}<li><a href="/notes/sources/{{ source.id }}">{{ source.question }}</a></li>{% endfor %}</ul></details>{% endif %}
 </main>
 {% endblock %}

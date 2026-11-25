@@ -77,6 +77,20 @@ function readConversation() {
         return ids.length === 1 ? ids[0] : null;
     }
 
+    function answerImages(element) {
+        const owner = element.closest('[data-message-author-role]');
+        if (owner && owner.getAttribute('data-message-author-role') !== 'assistant') return [];
+        const scope = owner || element;
+        return Array.from(scope.querySelectorAll('img')).filter(image =>
+            image.closest('[data-message-author-role]') === owner
+            && !image.closest('[data-user-message-bubble="true"], button[aria-haspopup="menu"]')
+            && isOnActiveSurface(image)
+            && image.naturalWidth >= 80 && image.naturalHeight >= 80
+        ).map(image => image.currentSrc || image.src).filter(url =>
+            url?.startsWith('https://')
+        );
+    }
+
     for (const [index, element] of nodes.entries()) {
         if (!isOnActiveSurface(element)) continue;
         const isUser = element.matches(
@@ -101,7 +115,8 @@ function readConversation() {
             element.innerText ?? element.textContent ?? ''
         ).trim();
 
-        if (!text) continue;
+        const images = isUser ? [] : answerImages(element);
+        if (!text && !isUser && !images.length) continue;
 
         const owner = element.closest(
             '[data-chatgpt-selection-message-id], [data-message-id]'
@@ -123,12 +138,14 @@ function readConversation() {
             groups.set(key, {
                 message_id: id,
                 role,
-                parts: []
+                parts: [],
+                images: new Set()
             });
         }
 
         const group = groups.get(key);
-        if (!group.parts.includes(text)) {
+        images.forEach(url => group.images.add(url));
+        if (text && !group.parts.includes(text)) {
             group.parts.push(text);
         }
     }
@@ -136,7 +153,8 @@ function readConversation() {
     let messages = Array.from(groups.values()).map(group => ({
         message_id: group.message_id,
         role: group.role,
-        text: group.parts.join('\n\n')
+        text: group.parts.join('\n\n'),
+        images: [...group.images]
     }));
 
     if (nodes.length === 0) {
@@ -151,11 +169,12 @@ function readConversation() {
                     '[data-message-id]'
                 )?.getAttribute('data-message-id') || null,
                 role: element.getAttribute('data-message-author-role'),
+                images: answerImages(element),
                 text: (
                     body.innerText ?? body.textContent ?? ''
                 ).trim()
             };
-        }).filter(message => message.text);
+        }).filter(message => message.role === "user" || message.text || message.images.length);
     }
 
     return {
