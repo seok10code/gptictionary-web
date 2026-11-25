@@ -26,6 +26,7 @@ class CollectorClassificationRequest(BaseModel):
     question_id: str = Field(min_length=1, max_length=255)
     previous_question_id: str | None = Field(default=None, max_length=255)
     question: str = Field(min_length=1, max_length=20000)
+    answer: str | None = Field(default=None, max_length=1000000)
 
 
 class CollectorSnapshot(BaseModel):
@@ -136,6 +137,7 @@ def classify_collector_question(
         decision = classify_learning_intent(
             payload.question,
             parent_question=parent.question if parent else None,
+            answer=payload.answer,
         )
     except Exception as error:
         # Do not accept on model/API failure; the extension retries later.
