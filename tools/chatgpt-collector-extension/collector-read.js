@@ -77,11 +77,41 @@ function readConversation() {
         return ids.length === 1 ? ids[0] : null;
     }
 
+    function diagramImage(svg) {
+        const bounds = svg.getBoundingClientRect();
+        const copy = svg.cloneNode(true);
+        copy.setAttribute('width', bounds.width);
+        copy.setAttribute('height', bounds.height);
+
+        const originals = [svg, ...svg.querySelectorAll('*')];
+        const copies = [copy, ...copy.querySelectorAll('*')];
+        const properties = [
+            'background-color', 'color', 'fill', 'fill-opacity', 'stroke',
+            'stroke-width', 'stroke-opacity', 'stroke-dasharray', 'opacity',
+            'font-family', 'font-size', 'font-weight', 'text-anchor',
+            'dominant-baseline', 'line-height', 'text-align', 'white-space',
+            'display', 'align-items', 'justify-content',
+        ];
+        originals.forEach((original, index) => {
+            const style = getComputedStyle(original);
+            for (const property of properties) {
+                const value = style.getPropertyValue(property);
+                if (value && !value.includes('url(')) {
+                    copies[index].style?.setProperty(property, value);
+                }
+            }
+        });
+        copy.querySelectorAll('script, iframe, object, embed').forEach(element => element.remove());
+        const xml = new XMLSerializer().serializeToString(copy);
+        if (xml.length > 200000) return null;
+        return 'data:image/svg+xml;charset=utf-8,' + encodeURIComponent(xml);
+    }
+
     function answerImages(element) {
         const owner = element.closest('[data-message-author-role]');
         if (owner && owner.getAttribute('data-message-author-role') !== 'assistant') return [];
         const scope = owner || element;
-        return Array.from(scope.querySelectorAll('img')).filter(image =>
+        const images = Array.from(scope.querySelectorAll('img')).filter(image =>
             image.closest('[data-message-author-role]') === owner
             && !image.closest('[data-user-message-bubble="true"], button[aria-haspopup="menu"]')
             && isOnActiveSurface(image)
@@ -89,6 +119,14 @@ function readConversation() {
         ).map(image => image.currentSrc || image.src).filter(url =>
             url?.startsWith('https://')
         );
+        const diagrams = Array.from(scope.querySelectorAll('svg')).filter(svg =>
+            svg.closest('[data-message-author-role]') === owner
+            && !svg.parentElement?.closest('svg, button, [data-user-message-bubble="true"]')
+            && isOnActiveSurface(svg)
+            && svg.getBoundingClientRect().width >= 80
+            && svg.getBoundingClientRect().height >= 80
+        ).slice(0, 4).map(diagramImage).filter(Boolean);
+        return [...images, ...diagrams];
     }
 
     for (const [index, element] of nodes.entries()) {

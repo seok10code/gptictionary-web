@@ -55,7 +55,7 @@ async function syncAnswerImages(key, item) {
                     continue;
                 }
                 const image = await response.blob();
-                if (!['image/png', 'image/jpeg', 'image/webp', 'image/gif'].includes(image.type)
+                if (!['image/png', 'image/jpeg', 'image/webp', 'image/gif', 'image/svg+xml'].includes(image.type.split(';')[0])
                     || image.size > 8 * 1024 * 1024) continue;
                 const upload = await fetch(endpoint, {
                     method: 'POST', credentials: 'omit', redirect: 'error',

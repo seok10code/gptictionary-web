@@ -3,6 +3,7 @@ import hmac
 import json
 import os
 from datetime import datetime, timedelta
+from xml.etree import ElementTree
 
 from fastapi import APIRouter, Depends, Header, HTTPException, Request
 from pydantic import BaseModel, Field
@@ -275,6 +276,18 @@ async def receive_answer_image(
         media_type = "image/gif"
     elif content.startswith(b"RIFF") and content[8:12] == b"WEBP":
         media_type = "image/webp"
+    elif request.headers.get("content-type", "").split(";")[0] == "image/svg+xml":
+        if len(content) > 512 * 1024:
+            raise HTTPException(413, "도표 이미지가 너무 큽니다.")
+        if b"<!doctype" in content.lower() or b"<!entity" in content.lower():
+            raise HTTPException(415, "지원하지 않는 도표 형식입니다.")
+        try:
+            svg = ElementTree.fromstring(content.decode("utf-8"))
+        except (UnicodeDecodeError, ElementTree.ParseError) as error:
+            raise HTTPException(415, "도표 이미지가 올바르지 않습니다.") from error
+        if svg.tag != "{http://www.w3.org/2000/svg}svg":
+            raise HTTPException(415, "도표 이미지가 올바르지 않습니다.")
+        media_type = "image/svg+xml"
     else:
         raise HTTPException(415, "지원하지 않는 이미지 형식입니다.")
 

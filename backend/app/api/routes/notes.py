@@ -455,7 +455,11 @@ def answer_image(source_id: int, digest: str, db: Session = Depends(get_db)):
         raise HTTPException(404, "이미지를 찾을 수 없습니다.")
     return Response(
         image.content, media_type=image.media_type,
-        headers={"X-Content-Type-Options": "nosniff", "Cache-Control": "private, max-age=86400"},
+        headers={
+            "X-Content-Type-Options": "nosniff",
+            "Cache-Control": "private, max-age=86400",
+            "Content-Security-Policy": "sandbox; default-src 'none'; style-src 'unsafe-inline'",
+        },
     )
 
 

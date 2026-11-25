@@ -1,7 +1,7 @@
 {
   "manifest_version": 3,
   "name": "GPTictionary Collector",
-  "version": "0.6.5",
+  "version": "0.6.6",
   "description": "ChatGPT 영어 학습 대화를 자동 감지하고 서버로 전송합니다.",
   "permissions": [
     "activeTab",
