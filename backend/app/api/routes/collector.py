@@ -12,7 +12,6 @@ from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
 from backend.app.db.database import get_db
-from backend.app.models.mobile_question import MobileQuestion
 from backend.app.models.english_note import NoteSource
 from backend.app.models.note_pair_queue import NotePairJob
 from backend.app.services.note_pair_queue import enqueue
@@ -21,10 +20,6 @@ from backend.app.models.note_source_image import NoteSourceImage
 from backend.app.services.note_source_store import save_source
 
 router = APIRouter()
-
-
-class MobileQuestionRequest(BaseModel):
-    question: str = Field(min_length=1, max_length=8000)
 
 
 class CollectorClassificationRequest(BaseModel):
@@ -313,40 +308,6 @@ async def receive_answer_image(
             if db.get(NoteSourceImage, (source_id, digest)) is None:
                 raise
     return {"stored": True}
-
-
-@router.post("/api/collector/mobile-questions")
-def receive_mobile_question(
-    payload: MobileQuestionRequest,
-    authorization: str | None = Header(None),
-    db: Session = Depends(get_db),
-):
-    require_collector_auth(authorization)
-    require_allowed_database(db)
-    question = payload.question.strip()
-    if not question:
-        raise HTTPException(422, "복사한 질문이 비어 있습니다.")
-
-    fingerprint = hashlib.sha256(question.encode("utf-8")).hexdigest()
-    existing = db.query(MobileQuestion.id).filter_by(fingerprint=fingerprint).first()
-    if existing is not None:
-        return {"saved": True, "question_id": existing.id, "duplicate": True}
-
-    entry = MobileQuestion(question=question, fingerprint=fingerprint)
-    db.add(entry)
-    try:
-        db.flush()
-        question_id = entry.id
-        db.commit()
-    except IntegrityError:
-        db.rollback()
-        existing = db.query(MobileQuestion.id).filter_by(fingerprint=fingerprint).first()
-        if existing is None:
-            raise
-        return {"saved": True, "question_id": existing.id, "duplicate": True}
-
-    return {"saved": True, "question_id": question_id, "duplicate": False}
-
 
 
 class MobileAnswerRequest(BaseModel):

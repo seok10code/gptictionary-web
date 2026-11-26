@@ -15,7 +15,6 @@ from sqlalchemy.exc import ProgrammingError
 from sqlalchemy.orm import Session
 from backend.app.db.database import get_db
 from backend.app.models.note_source_image import NoteSourceImage
-from backend.app.models.mobile_question import MobileQuestion
 from backend.app.models.english_note import EnglishNote, NoteSection, NoteSourceLink, NoteSource
 from backend.app.services.note_learning import KINDS, NoteProblem, study_note
 from backend.app.services.note_list_tags import note_tags
@@ -494,24 +493,3 @@ def retry_conversation(key: str, request: Request, csrf: str = Form(...), db: Se
         db.rollback()
         raise HTTPException(409, str(exc)) from None
     return RedirectResponse("/notes/import", 303)
-
-
-@router.get("/notes/mobile-questions")
-def mobile_questions(
-    request: Request,
-    before: int | None = Query(None, ge=1),
-    db: Session = Depends(get_db),
-):
-    query = db.query(MobileQuestion)
-    if before is not None:
-        query = query.filter(MobileQuestion.id < before)
-    try:
-        rows = query.order_by(MobileQuestion.id.desc()).limit(51).all()
-    except ProgrammingError as error:
-        if not error.orig.args or error.orig.args[0] != 1146:
-            raise
-        raise HTTPException(503, "아이폰 질문함 테이블을 먼저 준비해 주세요.") from None
-    return templates.TemplateResponse(
-        request=request, name="note_mobile_questions.html",
-        context={"questions": rows[:50], "next_before": rows[49].id if len(rows) > 50 else None},
-    )
