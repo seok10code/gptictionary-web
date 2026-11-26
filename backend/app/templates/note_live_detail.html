@@ -36,6 +36,6 @@
 </section>
 <script src="/static/js/note-image-zoom.js" defer></script>
 {% endif %}
-{% if sources %}<details class="nd-originals"><summary>대화 원문</summary><ul>{% for source in sources %}<li><a href="/notes/sources/{{ source.id }}">{{ source.question }}</a></li>{% endfor %}</ul></details>{% endif %}
+{% if sources %}<details class="nd-originals"><summary>대화 원문</summary><ul>{% for source in sources %}<li><a href="/notes/sources/{{ source.id }}">{{ source.question or source.collection }}</a></li>{% endfor %}</ul></details>{% endif %}
 </main>
 {% endblock %}

@@ -13,6 +13,9 @@ from sqlalchemy.orm import Session
 
 from backend.app.db.database import get_db
 from backend.app.models.mobile_question import MobileQuestion
+from backend.app.models.english_note import NoteSource
+from backend.app.models.note_pair_queue import NotePairJob
+from backend.app.services.note_pair_queue import enqueue
 from backend.app.models.note_source_evidence import NoteSourceEvidence
 from backend.app.models.note_source_image import NoteSourceImage
 from backend.app.services.note_source_store import save_source
@@ -343,3 +346,60 @@ def receive_mobile_question(
         return {"saved": True, "question_id": existing.id, "duplicate": True}
 
     return {"saved": True, "question_id": question_id, "duplicate": False}
+
+
+
+class MobileAnswerRequest(BaseModel):
+    answer: str = Field(min_length=1, max_length=16000)
+
+
+@router.post("/api/collector/mobile-notes")
+def receive_mobile_answer(
+    payload: MobileAnswerRequest,
+    authorization: str | None = Header(None),
+    db: Session = Depends(get_db),
+):
+    secret = require_collector_auth(authorization)
+    require_allowed_database(db)
+    answer = payload.answer.strip()
+    if not answer:
+        raise HTTPException(422, "복사한 답변이 비어 있습니다.")
+    if any(hmac.compare_digest(answer.encode(), value.encode())
+           for value in (secret, f"Bearer {secret}")):
+        raise HTTPException(422, "클립보드에 연결키가 있습니다. ChatGPT 답변을 복사해주세요.")
+
+    source_key = hashlib.sha256(("mobile-answer:" + answer).encode()).hexdigest()
+
+    def existing_job():
+        return db.query(NotePairJob).join(
+            NoteSource, NoteSource.id == NotePairJob.source_id,
+        ).filter(NoteSource.source_key == source_key).first()
+
+    job = existing_job()
+    duplicate = job is not None
+    if job is None:
+        try:
+            source = NoteSource(
+                source_key=source_key,
+                conversation_id=f"mobile:{source_key}",
+                message_id=source_key,
+                question="",
+                answer=answer,
+                collection="아이폰에서 저장한 답변",
+                status="pending",
+            )
+            db.add(source)
+            db.flush()
+            job = enqueue(db, source, "mobile", {"snapshot_stable": True, "order_known": True})
+            db.commit()
+        except IntegrityError:
+            db.rollback()
+            job = existing_job()
+            if job is None:
+                raise
+            duplicate = True
+
+    return {
+        "accepted": True, "job_id": job.id, "status": job.status,
+        "note_id": job.note_id, "duplicate": duplicate,
+    }

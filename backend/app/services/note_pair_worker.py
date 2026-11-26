@@ -82,7 +82,7 @@ def load_input(factory,job_id,token):
             context.append({'source_id':s.id,'question':s.question,'answer':s.answer[:10000],
                 'note_id':p.note_id,'context_truncated':len(s.answer)>10000})
         options=candidates(db,turn,context)
-        info={'turn':turn,'context':context,'candidates':options,'old_result':copy.deepcopy(job.result or {})}
+        info={'channel':job.channel,'turn':turn,'context':context,'candidates':options,'old_result':copy.deepcopy(job.result or {})}
         db.commit();return info
 
 def save_note(factory,job_id,token,route,document,expected_version,expected_note_id):
@@ -91,7 +91,10 @@ def save_note(factory,job_id,token,route,document,expected_version,expected_note
         if expected_note_id is None:
             # Same concrete canonical title is an additional uniqueness guard;
             # semantic matching remains the routing decision, not a keyword-only merge.
-            topic_key=hashlib.sha256(('pair-note:'+route.kind+':'+editor.text_key(route.title)).encode()).hexdigest()
+            if job.channel == 'mobile':
+                topic_key = source.source_key
+            else:
+                topic_key=hashlib.sha256(('pair-note:'+route.kind+':'+editor.text_key(route.title)).encode()).hexdigest()
             note=db.query(EnglishNote).filter_by(topic_key=topic_key).with_for_update().first()
             if note:raise VersionConflict('동시에 같은 노트가 생성되었습니다.')
             note=EnglishNote(topic_key=topic_key,title=document['title'],kind=route.kind,
@@ -168,7 +171,10 @@ async def process_word(factory,job_id,token,turn,old_result):
 
 async def process(factory,job_id,token):
     data=load_input(factory,job_id,token);turn=data['turn']
-    route=await asyncio.to_thread(editor.route_pair,turn,data['context'],data['candidates'])
+    if data['channel'] == 'mobile':
+        route = await asyncio.to_thread(editor.describe_mobile_note, turn['answer'])
+    else:
+        route=await asyncio.to_thread(editor.route_pair,turn,data['context'],data['candidates'])
     heartbeat(factory,job_id,token)
     if route.route=='other':
         with factory() as db:
