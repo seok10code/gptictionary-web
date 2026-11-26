@@ -50,7 +50,10 @@ async def auth_middleware(request: Request, call_next):
         or request.url.path in public_paths
         or (
             request.method == "POST"
-            and re.fullmatch(r"/api/collector/sources/[0-9]+/images", request.url.path)
+            and (
+                request.url.path == "/api/collector/mobile-questions"
+                or re.fullmatch(r"/api/collector/sources/[0-9]+/images", request.url.path)
+            )
         )
     ):
         return await call_next(request)
