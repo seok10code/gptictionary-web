@@ -1,6 +1,6 @@
 {% extends "base.html" %}
 {% block content %}
-<link rel="stylesheet" href="/static/css/note-document.css?v=6">
+<link rel="stylesheet" href="/static/css/note-document.css?v=7">
 <main class="nd-page">
 <a class="nd-back" href="/notes">← 영어 노트</a>
 <article>
@@ -20,9 +20,22 @@
 </section>{% endfor %}</div>
 {% else %}{% for section in sections %}<section class="nd-section nd-paragraph">{{ section.body|note_document_text }}</section>{% endfor %}{% endif %}
 </article>
-{% if answer_images %}<section class="nd-section"><h2>답변 이미지</h2>
-{% for image in answer_images %}<img src="/notes/answer-images/{{ image.source_id }}/{{ image.digest }}" alt="ChatGPT 답변 이미지" loading="lazy" style="display:block;max-width:100%;height:auto;margin-block:1rem">{% endfor %}
-</section>{% endif %}
+{% if answer_images %}
+<section class="nd-section" data-note-images>
+  <h2>답변 이미지</h2>
+  {% for image in answer_images %}
+  {% set image_url = '/notes/answer-images/' ~ image.source_id ~ '/' ~ image.digest %}
+  <a class="nd-image-preview" href="{{ image_url }}" aria-label="답변 이미지 {{ loop.index }} 확대">
+    <img src="{{ image_url }}" alt="ChatGPT 답변 이미지 {{ loop.index }}" loading="lazy">
+  </a>
+  {% endfor %}
+  <dialog class="nd-image-dialog" aria-label="답변 이미지 확대">
+    <form method="dialog"><button type="submit" autofocus>닫기</button></form>
+    <img alt="">
+  </dialog>
+</section>
+<script src="/static/js/note-image-zoom.js" defer></script>
+{% endif %}
 {% if sources %}<details class="nd-originals"><summary>대화 원문</summary><ul>{% for source in sources %}<li><a href="/notes/sources/{{ source.id }}">{{ source.question }}</a></li>{% endfor %}</ul></details>{% endif %}
 </main>
 {% endblock %}

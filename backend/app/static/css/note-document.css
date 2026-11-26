@@ -50,3 +50,11 @@
  .nd-page .nd-example-ko{font-size:17px}
  .nd-page .nd-inline-example{padding-left:14px}
 }
+
+.nd-image-preview{display:block;width:fit-content;max-width:100%;margin-block:1rem;cursor:zoom-in}
+.nd-image-preview img{display:block;max-width:100%;height:auto}
+.nd-image-dialog{box-sizing:border-box;max-width:calc(100vw - 2rem);max-height:calc(100dvh - 2rem);padding:1rem;border:1px solid #37465a;border-radius:12px;background:#101827;color:#e6edf6}
+.nd-image-dialog::backdrop{background:rgb(0 0 0 / 78%)}
+.nd-image-dialog form{text-align:right;margin-bottom:.75rem}
+.nd-image-dialog button{font:inherit;padding:.35rem .75rem;cursor:pointer}
+.nd-image-dialog img{display:block;max-width:calc(100vw - 4.25rem);max-height:calc(100dvh - 7rem);width:auto;height:auto;object-fit:contain}
